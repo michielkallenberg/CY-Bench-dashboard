@@ -1,2 +1,2 @@
 France walk-forward, mid-season (FR maize/wheat)
-Source: /home/michiel/Downloads/paper_walk_forward_fr_mid_v1
+Source: /lustre/backup/SHARED/AIN/agml/output/paper_walk_forward_fr_mid_v1
