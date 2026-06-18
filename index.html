@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CY-Bench dashboards</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
   <style>
     :root {
       --bg: #f6f8fa;
@@ -13,6 +14,10 @@
       --muted: #656d76;
       --accent: #0969da;
       --accent-soft: #ddf4ff;
+      --land: #e8eaed;
+      --land-available: #9ec5fe;
+      --land-active: #0969da;
+      --land-missing: #f0f0f0;
     }
     * { box-sizing: border-box; }
     body {
@@ -23,289 +28,228 @@
       color: var(--text);
       line-height: 1.45;
     }
-    .page { max-width: 1100px; margin: 0 auto; }
+    .page { max-width: 1200px; margin: 0 auto; }
     h1 { margin: 0; font-size: 1.5rem; font-weight: 600; }
-    h2 { margin: 0 0 0.85rem; font-size: 1.05rem; font-weight: 600; }
-    .lead { margin: 0.35rem 0 1.25rem; color: var(--muted); }
-    .block + .block { margin-top: 1.5rem; }
-    .muted { color: var(--muted); font-size: 0.9rem; }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 0.85rem;
+    h2 { margin: 0 0 0.75rem; font-size: 1.05rem; font-weight: 600; }
+    .lead { margin: 0.35rem 0 1rem; color: var(--muted); }
+    .top-links { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 1rem; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.45rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.88rem;
     }
-    .link-card {
-      display: block;
+    .pill:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 1rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 0.95rem 1rem;
+      padding: 0.85rem;
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.65rem;
+    }
+    .toolbar button {
+      padding: 0.35rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.86rem;
+    }
+    .toolbar button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .muted { color: var(--muted); font-size: 0.88rem; }
+    #map-wrap { width: 100%; overflow: hidden; }
+    #map-wrap svg { display: block; width: 100%; height: auto; }
+    .country {
+      stroke: #fff;
+      stroke-width: 0.5px;
+      cursor: default;
+      transition: fill 0.15s;
+    }
+    .country.available { cursor: pointer; }
+    .country.available:hover { filter: brightness(0.92); }
+    .country.selected { stroke: var(--text); stroke-width: 1.2px; }
+    #detail h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+    #detail .cc { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.75rem; }
+    .dash-link {
+      display: block;
+      padding: 0.55rem 0.65rem;
+      margin-bottom: 0.45rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
       text-decoration: none;
       color: inherit;
-      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
-      transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+      background: #fafbfc;
     }
-    .link-card:hover {
-      border-color: var(--accent);
-      box-shadow: 0 4px 12px rgba(9, 105, 218, 0.12);
-      transform: translateY(-1px);
+    .dash-link:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .dash-link.disabled {
+      opacity: 0.45;
+      pointer-events: none;
     }
-    .link-card h3 {
-      margin: 0.35rem 0 0.25rem;
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .link-card-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .badge {
+    .legend { margin-top: 0.65rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+    .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .swatch {
+      width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border);
       display: inline-block;
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      padding: 0.15rem 0.45rem;
-      border-radius: 999px;
-      background: var(--accent-soft);
-      color: var(--accent);
     }
-    .badge-neutral {
-      background: #f3f4f6;
-      color: var(--muted);
-    }
-    .arrow { color: var(--muted); font-size: 1.1rem; }
   </style>
 </head>
 <body>
   <div class="page">
     <header>
       <h1>CY-Bench dashboards</h1>
-      <p class="lead">Published walk-forward evaluation dashboards (interactive metrics + maps).</p>
+      <p class="lead">Click a country on the map to open walk-forward dashboards. Colors reflect the selected forecast horizon.</p>
     </header>
-  <section class="block">
-    <h2>Global insights</h2>
-    <div class="grid">
-      <a class="link-card" href="insights.html">
-        <div class="link-card-top"><span class="badge badge-neutral">ALL</span><span class="arrow" aria-hidden="true">→</span></div>
-        <h3>Cross-country model ranking</h3>
-        <p class="muted">NRMSE leaderboard and end-of-season vs mid-season comparison</p>
-      </a>
+
+    <div class="top-links" id="top-links"></div>
+
+    <div class="layout">
+      <div class="card">
+        <div class="toolbar">
+          <span class="muted">Horizon</span>
+          <button type="button" data-horizon="both" class="active">Both</button>
+          <button type="button" data-horizon="eos">End of season</button>
+          <button type="button" data-horizon="mid">Mid-season</button>
+        </div>
+        <div id="map-wrap"><p class="muted">Loading map…</p></div>
+        <div class="legend muted">
+          <span><i class="swatch" style="background:var(--land-available)"></i> Dashboard available</span>
+          <span><i class="swatch" style="background:var(--land-missing)"></i> No dashboard</span>
+        </div>
+      </div>
+      <div class="card" id="detail">
+        <h3>Select a country</h3>
+        <p class="muted">Click a highlighted country on the map.</p>
+      </div>
     </div>
-  </section>
-    <section class="block">
-      <h2>Walk-forward</h2>
-      <div class="grid"><a class="link-card" href="at_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">AT</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>Austria walk-forward, mid-season (AT maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="au_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">AU</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>Australia walk-forward, end-of-season (AU maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="au_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">AU</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>Australia walk-forward, mid-season (AU maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="be_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">BE</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>Belgium walk-forward, end-of-season (BE maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="bf_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">BF</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>BF walk-forward, end-of-season (BF maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="bf_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">BF</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>BF walk-forward, mid-season (BF maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="cn_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">CN</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>China walk-forward, end-of-season (CN maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="cn_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">CN</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>China walk-forward, mid-season (CN maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="cz_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">CZ</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>CZ walk-forward, end-of-season (CZ maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="cz_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">CZ</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>CZ walk-forward, mid-season (CZ maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="de_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">DE</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>Germany walk-forward, end-of-season (DE maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="de_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">DE</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>Germany walk-forward, mid-season (DE maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="dk_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">DK</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>DK walk-forward, end-of-season (DK maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="ee_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">EE</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>EE walk-forward, end-of-season (EE maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="ee_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">EE</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>EE walk-forward, mid-season (EE maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="el_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">EL</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>EL walk-forward, end-of-season (EL maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="el_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">EL</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>EL walk-forward, mid-season (EL maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="et_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">ET</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>ET walk-forward, end-of-season (ET maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="et_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">ET</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>ET walk-forward, mid-season (ET maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="fi_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">FI</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>FI walk-forward, end-of-season (FI maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="fi_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">FI</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>FI walk-forward, mid-season (FI maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="fr_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">FR</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>France walk-forward, end-of-season (FR maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="fr_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">FR</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>France walk-forward, mid-season (FR maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="hr_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">HR</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>HR walk-forward, end-of-season (HR maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="hr_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">HR</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>HR walk-forward, mid-season (HR maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="hu_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">HU</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>HU walk-forward, mid-season (HU maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="ls_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">LS</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>LS walk-forward, end-of-season (LS maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="ls_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">LS</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>LS walk-forward, mid-season (LS maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="lt_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">LT</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>LT walk-forward, mid-season (LT maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="lv_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">LV</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>LV walk-forward, end-of-season (LV maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="lv_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">LV</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>LV walk-forward, mid-season (LV maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="ml_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">ML</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>ML walk-forward, end-of-season (ML maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="ml_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">ML</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>ML walk-forward, mid-season (ML maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="mz_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">MZ</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>MZ walk-forward, end-of-season (MZ maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="mz_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">MZ</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>MZ walk-forward, mid-season (MZ maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="ne_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">NE</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>NE walk-forward, end-of-season (NE maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="ne_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">NE</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>NE walk-forward, mid-season (NE maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="pl_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">PL</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>Poland walk-forward, end-of-season (PL maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="pl_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">PL</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>Poland walk-forward, mid-season (PL maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="pt_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">PT</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>PT walk-forward, end-of-season (PT maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="pt_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">PT</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>PT walk-forward, mid-season (PT maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="ro_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">RO</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>RO walk-forward, end-of-season (RO maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="ro_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">RO</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>RO walk-forward, mid-season (RO maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="sn_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">SN</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>SN walk-forward, end-of-season (SN maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="sn_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">SN</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>SN walk-forward, mid-season (SN maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="td_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">TD</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>TD walk-forward, end-of-season (TD maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="td_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">TD</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>TD walk-forward, mid-season (TD maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="us_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">US</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>US walk-forward, mid-season (US maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="za_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">ZA</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>ZA walk-forward, end-of-season (ZA maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="za_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">ZA</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>ZA walk-forward, mid-season (ZA maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a><a class="link-card" href="zm_walk_forward_eos_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">ZM</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>ZM walk-forward, end-of-season (ZM maize/wheat)</h3>
-  <p class="muted">End of season · walk-forward · v1</p>
-</a><a class="link-card" href="zm_walk_forward_mid_v1/dashboard.html">
-  <div class="link-card-top"><span class="badge">ZM</span><span class="arrow" aria-hidden="true">→</span></div>
-  <h3>ZM walk-forward, mid-season (ZM maize/wheat)</h3>
-  <p class="muted">Mid-season · walk-forward · v1</p>
-</a></div>
-    </section>
   </div>
+
+  <script>
+    const DATA = {"countries": [{"cc": "AU", "map_cc": "AU", "name": "Australia", "eos": "au_walk_forward_eos_v1/dashboard.html", "mid": "au_walk_forward_mid_v1/dashboard.html"}, {"cc": "AT", "map_cc": "AT", "name": "Austria", "eos": null, "mid": "at_walk_forward_mid_v1/dashboard.html"}, {"cc": "BE", "map_cc": "BE", "name": "Belgium", "eos": "be_walk_forward_eos_v1/dashboard.html", "mid": null}, {"cc": "BF", "map_cc": "BF", "name": "Burkina Faso", "eos": "bf_walk_forward_eos_v1/dashboard.html", "mid": "bf_walk_forward_mid_v1/dashboard.html"}, {"cc": "TD", "map_cc": "TD", "name": "Chad", "eos": "td_walk_forward_eos_v1/dashboard.html", "mid": "td_walk_forward_mid_v1/dashboard.html"}, {"cc": "CN", "map_cc": "CN", "name": "China", "eos": "cn_walk_forward_eos_v1/dashboard.html", "mid": "cn_walk_forward_mid_v1/dashboard.html"}, {"cc": "HR", "map_cc": "HR", "name": "Croatia", "eos": "hr_walk_forward_eos_v1/dashboard.html", "mid": "hr_walk_forward_mid_v1/dashboard.html"}, {"cc": "CZ", "map_cc": "CZ", "name": "Czechia", "eos": "cz_walk_forward_eos_v1/dashboard.html", "mid": "cz_walk_forward_mid_v1/dashboard.html"}, {"cc": "DK", "map_cc": "DK", "name": "Denmark", "eos": "dk_walk_forward_eos_v1/dashboard.html", "mid": null}, {"cc": "EE", "map_cc": "EE", "name": "Estonia", "eos": "ee_walk_forward_eos_v1/dashboard.html", "mid": "ee_walk_forward_mid_v1/dashboard.html"}, {"cc": "ET", "map_cc": "ET", "name": "Ethiopia", "eos": "et_walk_forward_eos_v1/dashboard.html", "mid": "et_walk_forward_mid_v1/dashboard.html"}, {"cc": "FI", "map_cc": "FI", "name": "Finland", "eos": "fi_walk_forward_eos_v1/dashboard.html", "mid": "fi_walk_forward_mid_v1/dashboard.html"}, {"cc": "FR", "map_cc": "FR", "name": "France", "eos": "fr_walk_forward_eos_v1/dashboard.html", "mid": "fr_walk_forward_mid_v1/dashboard.html"}, {"cc": "DE", "map_cc": "DE", "name": "Germany", "eos": "de_walk_forward_eos_v1/dashboard.html", "mid": "de_walk_forward_mid_v1/dashboard.html"}, {"cc": "EL", "map_cc": "GR", "name": "Greece", "eos": "el_walk_forward_eos_v1/dashboard.html", "mid": "el_walk_forward_mid_v1/dashboard.html"}, {"cc": "HU", "map_cc": "HU", "name": "Hungary", "eos": null, "mid": "hu_walk_forward_mid_v1/dashboard.html"}, {"cc": "LV", "map_cc": "LV", "name": "Latvia", "eos": "lv_walk_forward_eos_v1/dashboard.html", "mid": "lv_walk_forward_mid_v1/dashboard.html"}, {"cc": "LS", "map_cc": "LS", "name": "Lesotho", "eos": "ls_walk_forward_eos_v1/dashboard.html", "mid": "ls_walk_forward_mid_v1/dashboard.html"}, {"cc": "LT", "map_cc": "LT", "name": "Lithuania", "eos": null, "mid": "lt_walk_forward_mid_v1/dashboard.html"}, {"cc": "ML", "map_cc": "ML", "name": "Mali", "eos": "ml_walk_forward_eos_v1/dashboard.html", "mid": "ml_walk_forward_mid_v1/dashboard.html"}, {"cc": "MZ", "map_cc": "MZ", "name": "Mozambique", "eos": "mz_walk_forward_eos_v1/dashboard.html", "mid": "mz_walk_forward_mid_v1/dashboard.html"}, {"cc": "NE", "map_cc": "NE", "name": "Niger", "eos": "ne_walk_forward_eos_v1/dashboard.html", "mid": "ne_walk_forward_mid_v1/dashboard.html"}, {"cc": "PL", "map_cc": "PL", "name": "Poland", "eos": "pl_walk_forward_eos_v1/dashboard.html", "mid": "pl_walk_forward_mid_v1/dashboard.html"}, {"cc": "PT", "map_cc": "PT", "name": "Portugal", "eos": "pt_walk_forward_eos_v1/dashboard.html", "mid": "pt_walk_forward_mid_v1/dashboard.html"}, {"cc": "RO", "map_cc": "RO", "name": "Romania", "eos": "ro_walk_forward_eos_v1/dashboard.html", "mid": "ro_walk_forward_mid_v1/dashboard.html"}, {"cc": "SN", "map_cc": "SN", "name": "Senegal", "eos": "sn_walk_forward_eos_v1/dashboard.html", "mid": "sn_walk_forward_mid_v1/dashboard.html"}, {"cc": "ZA", "map_cc": "ZA", "name": "South Africa", "eos": "za_walk_forward_eos_v1/dashboard.html", "mid": "za_walk_forward_mid_v1/dashboard.html"}, {"cc": "US", "map_cc": "US", "name": "United States", "eos": null, "mid": "us_walk_forward_mid_v1/dashboard.html"}, {"cc": "ZM", "map_cc": "ZM", "name": "Zambia", "eos": "zm_walk_forward_eos_v1/dashboard.html", "mid": "zm_walk_forward_mid_v1/dashboard.html"}], "n_countries": 29, "has_insights": true, "has_screening": false, "screening_href": null, "geojson_href": "assets/world_countries.geojson"};
+    const byCc = new Map(DATA.countries.map(c => [c.cc, c]));
+    const byMapIso = new Map(DATA.countries.map(c => [c.map_cc || c.cc, c]));
+    let horizon = "both";
+    let selectedCc = null;
+
+    const topLinks = document.getElementById("top-links");
+    if (DATA.has_insights) {
+      topLinks.innerHTML += `<a class="pill" href="insights.html">Global insights</a>`;
+    }
+    if (DATA.has_screening && DATA.screening_href) {
+      topLinks.innerHTML += `<a class="pill" href="${DATA.screening_href}">Screening (all)</a>`;
+    }
+    topLinks.innerHTML += `<span class="pill muted">${DATA.n_countries} countries published</span>`;
+
+    function hasHorizon(c, hz) {
+      if (hz === "both") return Boolean(c.eos || c.mid);
+      return Boolean(c[hz]);
+    }
+
+    function fillForIso(mapIso) {
+      const c = byMapIso.get(mapIso);
+      if (!c || !hasHorizon(c, horizon)) return "var(--land-missing)";
+      if (selectedCc === c.cc) return "var(--land-active)";
+      return "var(--land-available)";
+    }
+
+    function renderDetail(cc) {
+      const el = document.getElementById("detail");
+      if (!cc || !byCc.has(cc)) {
+        el.innerHTML = `<h3>Select a country</h3><p class="muted">Click a highlighted country on the map.</p>`;
+        return;
+      }
+      const c = byCc.get(cc);
+      const eosCls = c.eos ? "" : " disabled";
+      const midCls = c.mid ? "" : " disabled";
+      el.innerHTML = `
+        <h3>${c.name}</h3>
+        <div class="cc">${c.cc}</div>
+        <a class="dash-link${eosCls}" href="${c.eos || "#"}">End-of-season walk-forward</a>
+        <a class="dash-link${midCls}" href="${c.mid || "#"}">Mid-season walk-forward</a>`;
+    }
+
+    function selectCountry(cc) {
+      selectedCc = cc;
+      renderDetail(cc);
+      d3.selectAll(".country")
+        .attr("fill", d => fillForIso(d.properties.ISO_A2));
+    }
+
+    function isoToCountry(mapIso) {
+      return byMapIso.get(mapIso) || null;
+    }
+
+    const width = 960;
+    const height = 520;
+    const svg = d3.select("#map-wrap").html("").append("svg")
+      .attr("viewBox", `0 0 ${width} ${height}`)
+      .attr("role", "img")
+      .attr("aria-label", "World map of CY-Bench dashboard countries");
+
+    const g = svg.append("g");
+    const projection = d3.geoNaturalEarth1().fitSize([width, height], {type: "Sphere"});
+    const path = d3.geoPath(projection);
+
+    d3.json(DATA.geojson_href).then(geo => {
+      g.selectAll("path")
+        .data(geo.features)
+        .join("path")
+        .attr("class", d => {
+          const c = isoToCountry(d.properties.ISO_A2);
+          return c && hasHorizon(c, horizon) ? "country available" : "country";
+        })
+        .attr("d", path)
+        .attr("fill", d => fillForIso(d.properties.ISO_A2))
+        .on("click", (event, d) => {
+          const c = isoToCountry(d.properties.ISO_A2);
+          if (c && hasHorizon(c, horizon)) selectCountry(c.cc);
+        });
+    }).catch(err => {
+      document.getElementById("map-wrap").innerHTML =
+        `<p class="muted">Could not load map (${err}). Use the country links in the repository README or open insights.</p>`;
+    });
+
+    document.querySelectorAll(".toolbar button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".toolbar button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        horizon = btn.dataset.horizon;
+        selectedCc = null;
+        renderDetail(null);
+        d3.selectAll(".country")
+          .attr("class", d => {
+            const c = isoToCountry(d.properties.ISO_A2);
+            return c && hasHorizon(c, horizon) ? "country available" : "country";
+          })
+          .attr("fill", d => fillForIso(d.properties.ISO_A2));
+      });
+    });
+  </script>
 </body>
 </html>
