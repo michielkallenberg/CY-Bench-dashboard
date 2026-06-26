@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CY-Bench Multi-Model Dashboard</title>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --card: #fff;
+      --border: #d8dee4;
+      --text: #1f2328;
+      --muted: #656d76;
+      --accent: #0969da;
+      --accent-soft: #ddf4ff;
+      --group-a: #f6f8fa;
+      --group-b: #fff;
+      --good: #1a7f37;
+      --bad: #cf222e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1.25rem;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .page { max-width: 1400px; margin: 0 auto; }
+    h2 { margin: 0 0 1rem; font-size: 1.35rem; font-weight: 600; }
+    h3 { margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+    }
+    .card + .card { margin-top: 1rem; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .table-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      align-items: center;
+      margin: 0.5rem 0 0.75rem;
+    }
+    .table-controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .table-controls select,
+    .table-controls input[type="search"] {
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: inherit;
+      background: #fff;
+    }
+    .table-controls input[type="search"] { min-width: 10rem; }
+    .table-scroll {
+      overflow: auto;
+      max-height: min(70vh, 720px);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.86rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.45rem 0.55rem;
+      text-align: center;
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) { text-align: left; }
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f3f4f6;
+      font-weight: 600;
+    }
+    thead tr:nth-child(2) th { top: 2.1rem; }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    th.sortable:hover { background: #e8eaed; }
+    th .sort-mark {
+      display: inline-block;
+      width: 0.9rem;
+      color: var(--accent);
+      font-size: 0.75rem;
+    }
+    th.group-head {
+      border-bottom: 2px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    tr.metric-row { cursor: pointer; }
+    tr.metric-row:hover td { filter: brightness(0.97); }
+    tr.metric-row.selected td {
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    tr.group-a td { background: var(--group-a); }
+    tr.group-b td { background: var(--group-b); }
+    td.dataset-cell {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    td.dataset-cell.continued {
+      color: transparent;
+      user-select: none;
+    }
+    td.metric-cell { font-variant-numeric: tabular-nums; }
+    td.metric-cell.missing { color: #9a9a9a; }
+    .dataset-parts {
+      display: flex;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .badge.country { background: #f0f0f0; color: #444; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0; }
+    .toolbar button {
+      padding: 0.4rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .toolbar button:hover { background: #f6f8fa; }
+    .toolbar button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .img-grid { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
+    .img-grid.two { grid-template-columns: 1fr 1fr; }
+    .map-caption {
+      font-size: 0.82rem;
+      margin-bottom: 0.35rem;
+      text-align: center;
+    }
+    @media (max-width: 900px) {
+      .img-grid.two { grid-template-columns: 1fr; }
+    }
+    img {
+      max-width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      min-height: 120px;
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h2>CY-Bench multi-model local dashboard</h2>
+    <div class="card">
+      <h3>Model comparison</h3>
+      <div class="muted" id="coverage-info"></div>
+      <div class="table-controls">
+        <label>
+          Dataset
+          <select id="dataset-filter">
+            <option value="">All datasets</option>
+          </select>
+        </label>
+        <label>
+          Model
+          <input type="search" id="model-filter" placeholder="Filter models…" />
+        </label>
+        <label>
+          <input type="checkbox" id="group-datasets" checked />
+          Group by dataset
+        </label>
+        <label>
+          Colors
+          <select id="color-mode">
+            <option value="fixed" selected>Fixed scale (absolute)</option>
+            <option value="column">Relative to filtered rows</option>
+          </select>
+        </label>
+      </div>
+      <div class="muted" style="margin-bottom: 0.5rem;">Click a column header to sort. Lower NRMSE and higher R² are better. Fixed colors use absolute thresholds (NRMSE 0–0.5, r/R² 0–1).</div>
+      <div class="table-scroll" id="heatmap-wrap"></div>
+    </div>
+
+    <div class="card">
+      <h3>Drill-down plots</h3>
+      <div id="selection-label" class="muted">Click a table row to inspect plots.</div>
+      <div class="toolbar">
+        <button data-panel="maps" class="active">Maps</button>
+        <button data-panel="scatter">Scatter</button>
+        <button data-panel="temporal">Temporal</button>
+      </div>
+      <div id="missing-note" class="muted"></div>
+      <div id="img-grid" class="img-grid two">
+        <div>
+          <div id="map-caption-left" class="map-caption muted">Ground truth (mean yield)</div>
+          <img id="drill-image-a" alt="Ground truth map" />
+        </div>
+        <div id="drill-col-b">
+          <div id="map-caption-right" class="map-caption muted">Model prediction</div>
+          <img id="drill-image-b" alt="Model prediction map" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DATA = [{"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "region_year", "metric": "r", "value": 0.9279345624573719}, {"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "region_year", "metric": "r2", "value": 0.7188516811714597}, {"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "region_year", "metric": "nrmse", "value": 0.19986925262247363}, {"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "region_year", "metric": "median_r2", "value": 0.7323181228305846}, {"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "spatial", "metric": "r", "value": 0.9570832717494409}, {"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "spatial", "metric": "r2", "value": 0.7931785453490958}, {"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "temporal", "metric": "r", "value": 0.800503094129656}, {"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "temporal", "metric": "r2", "value": -9.168991854191935}, {"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "anomaly", "metric": "r", "value": 0.028850443185337506}, {"model": "average_yield", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred.png", "scatter": "assets/maize_ES_scatter.png", "temporal": "assets/maize_ES_temporal.png"}, "view": "anomaly", "metric": "r2", "value": -3.9692449890176853}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "region_year", "metric": "r", "value": 0.8997466320089066}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "region_year", "metric": "r2", "value": 0.7674262445269489}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "region_year", "metric": "nrmse", "value": 0.18178523078093742}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "region_year", "metric": "median_r2", "value": 0.7533186296767469}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "spatial", "metric": "r", "value": 0.9608019505352796}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "spatial", "metric": "r2", "value": 0.8777626386069288}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "temporal", "metric": "r", "value": 0.7975358417916766}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "temporal", "metric": "r2", "value": -2.675126260778284}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "anomaly", "metric": "r", "value": 0.087470316603799}, {"model": "lightgbm", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_0c5b153c.png", "scatter": "assets/maize_ES_scatter_787f1e78.png", "temporal": "assets/maize_ES_temporal_6b73255f.png"}, "view": "anomaly", "metric": "r2", "value": -3.1106984874638455}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "region_year", "metric": "r", "value": 0.4972692524623125}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "region_year", "metric": "r2", "value": -0.154469116704548}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "region_year", "metric": "nrmse", "value": 0.4050134098785787}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "region_year", "metric": "median_r2", "value": -0.18451638377649382}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "spatial", "metric": "r", "value": 0.6140798414229698}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "spatial", "metric": "r2", "value": 0.15794670267472433}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "temporal", "metric": "r", "value": 0.5214741033620023}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "temporal", "metric": "r2", "value": -22.319991676361486}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "anomaly", "metric": "r", "value": 0.06509763812433521}, {"model": "lpjml_bc", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_421f708e.png", "map_pred": "assets/maize_ES_map_pred_bfa98eb5.png", "scatter": "assets/maize_ES_scatter_bc3717e9.png", "temporal": "assets/maize_ES_temporal_2bcf9e0c.png"}, "view": "anomaly", "metric": "r2", "value": -19.405029975151262}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "region_year", "metric": "r", "value": 0.9251633653390265}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "region_year", "metric": "r2", "value": 0.7996142103082247}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1687375360905713}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "region_year", "metric": "median_r2", "value": 0.7968906455227289}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "spatial", "metric": "r", "value": 0.9649786746126429}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "spatial", "metric": "r2", "value": 0.8781708594739335}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "temporal", "metric": "r", "value": 0.7334811340918126}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "temporal", "metric": "r2", "value": -2.5003215423964056}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "anomaly", "metric": "r", "value": 0.019187788521992738}, {"model": "random_forest", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_eef1d6a2.png", "scatter": "assets/maize_ES_scatter_421315de.png", "temporal": "assets/maize_ES_temporal_bb78fb51.png"}, "view": "anomaly", "metric": "r2", "value": -2.5417820936837217}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "region_year", "metric": "r", "value": 0.8671561435726087}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "region_year", "metric": "r2", "value": 0.7221033306615157}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "region_year", "metric": "nrmse", "value": 0.19871008717409586}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "region_year", "metric": "median_r2", "value": 0.7342218177443582}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "spatial", "metric": "r", "value": 0.948800786123483}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "spatial", "metric": "r2", "value": 0.8663194734982502}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "temporal", "metric": "r", "value": 0.47833713186573446}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "temporal", "metric": "r2", "value": -4.635022840363785}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "anomaly", "metric": "r", "value": -0.03244935288485802}, {"model": "ridge", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_1431a3ae.png", "scatter": "assets/maize_ES_scatter_b713f935.png", "temporal": "assets/maize_ES_temporal_27e711cb.png"}, "view": "anomaly", "metric": "r2", "value": -3.9117726804446544}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "region_year", "metric": "r", "value": 0.9258068667090499}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "region_year", "metric": "r2", "value": 0.8467344569332256}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "region_year", "metric": "nrmse", "value": 0.14757082568135663}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "region_year", "metric": "median_r2", "value": 0.8642607961151675}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "spatial", "metric": "r", "value": 0.9803748879969706}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "spatial", "metric": "r2", "value": 0.9521503000574286}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "temporal", "metric": "r", "value": 0.5547949860668417}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "temporal", "metric": "r2", "value": -0.42829657823574374}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "anomaly", "metric": "r", "value": 0.08094279401976505}, {"model": "trend", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual.png", "map_pred": "assets/maize_ES_map_pred_7bbde63c.png", "scatter": "assets/maize_ES_scatter_e967c723.png", "temporal": "assets/maize_ES_temporal_e8c21d10.png"}, "view": "anomaly", "metric": "r2", "value": -1.7089403737040199}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "region_year", "metric": "r", "value": 0.1268712823038122}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "region_year", "metric": "r2", "value": -2.8658245138458427}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "region_year", "metric": "nrmse", "value": 0.3343376086917984}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "region_year", "metric": "median_r2", "value": -2.421070287295628}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "spatial", "metric": "r", "value": 0.2019499704871849}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "spatial", "metric": "r2", "value": -2.338529088981037}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "temporal", "metric": "r", "value": 0.49626851454934645}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "temporal", "metric": "r2", "value": -62.574803893092565}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "anomaly", "metric": "r", "value": -0.024728427653463957}, {"model": "twso_bc", "dataset": "maize_ES", "n_regions": 6, "n_years": 5, "n_samples": 30, "images": {"map_actual": "assets/maize_ES_map_actual_5d8e4390.png", "map_pred": "assets/maize_ES_map_pred_eeefc8f3.png", "scatter": "assets/maize_ES_scatter_9aa7f3fe.png", "temporal": "assets/maize_ES_temporal_e02d273b.png"}, "view": "anomaly", "metric": "r2", "value": -20.158271115841334}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "region_year", "metric": "r", "value": 0.9295404834281181}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "region_year", "metric": "r2", "value": 0.8011935891987811}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "region_year", "metric": "nrmse", "value": 0.168071252065948}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "region_year", "metric": "median_r2", "value": 0.8010780283586986}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "spatial", "metric": "r", "value": 0.9693368788033329}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "spatial", "metric": "r2", "value": 0.8803067438954211}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "temporal", "metric": "r", "value": 0.7137452596046403}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "temporal", "metric": "r2", "value": -2.8971097699330834}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "anomaly", "metric": "r", "value": 0.027248485776770057}, {"model": "xgboost", "dataset": "maize_ES", "n_regions": 50, "n_years": 5, "n_samples": 233, "images": {"map_actual": "assets/maize_ES_map_actual_521678e7.png", "map_pred": "assets/maize_ES_map_pred_de1c2c2c.png", "scatter": "assets/maize_ES_scatter_6b671433.png", "temporal": "assets/maize_ES_temporal_f79aaea5.png"}, "view": "anomaly", "metric": "r2", "value": -2.51386686135952}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "region_year", "metric": "r", "value": 0.7072642746327786}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "region_year", "metric": "r2", "value": 0.46971553301629343}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "region_year", "metric": "nrmse", "value": 0.2942980923745802}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "region_year", "metric": "median_r2", "value": 0.23351804601518056}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "spatial", "metric": "r", "value": 0.9110964521698937}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "spatial", "metric": "r2", "value": 0.8032241485365709}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "temporal", "metric": "r", "value": -0.18459276512125913}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "temporal", "metric": "r2", "value": -0.20029030896434996}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "anomaly", "metric": "r", "value": -0.051682802680325324}, {"model": "average_yield", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred.png", "scatter": "assets/wheat_ES_scatter.png", "temporal": "assets/wheat_ES_temporal.png"}, "view": "anomaly", "metric": "r2", "value": -0.3382494090391557}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "region_year", "metric": "r", "value": 0.5461180637056648}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "region_year", "metric": "r2", "value": 0.2717566013063195}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "region_year", "metric": "nrmse", "value": 0.34488259078461503}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "region_year", "metric": "median_r2", "value": -0.07580659787351807}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "spatial", "metric": "r", "value": 0.6016429467861665}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "spatial", "metric": "r2", "value": 0.32450476075750956}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "temporal", "metric": "r", "value": -0.035376286374310555}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "temporal", "metric": "r2", "value": -0.28576681274027593}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "anomaly", "metric": "r", "value": -0.04677537166658409}, {"model": "lightgbm", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_46bcf390.png", "scatter": "assets/wheat_ES_scatter_22b09e59.png", "temporal": "assets/wheat_ES_temporal_d8205dad.png"}, "view": "anomaly", "metric": "r2", "value": -0.8378273523301765}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "region_year", "metric": "r", "value": 0.7085016075474098}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "region_year", "metric": "r2", "value": 0.38607424654978684}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "region_year", "metric": "nrmse", "value": 0.31665833213635886}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "region_year", "metric": "median_r2", "value": 0.5449764793442631}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "spatial", "metric": "r", "value": 0.5910048227618859}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "spatial", "metric": "r2", "value": -0.5478705236356292}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "temporal", "metric": "r", "value": 0.7224419189753741}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "temporal", "metric": "r2", "value": 0.3910422195875899}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "anomaly", "metric": "r", "value": 0.435000703466546}, {"model": "lpjml_bc", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual_7a4b5802.png", "map_pred": "assets/wheat_ES_map_pred_a1d46fd7.png", "scatter": "assets/wheat_ES_scatter_e5f2174f.png", "temporal": "assets/wheat_ES_temporal_2ff51d7e.png"}, "view": "anomaly", "metric": "r2", "value": -0.5493302706411538}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "region_year", "metric": "r", "value": 0.5762322832871776}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "region_year", "metric": "r2", "value": 0.31269030071267945}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "region_year", "metric": "nrmse", "value": 0.3350496976602004}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "region_year", "metric": "median_r2", "value": -0.07814728640794044}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "spatial", "metric": "r", "value": 0.6301208961730823}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "spatial", "metric": "r2", "value": 0.36921355914349263}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "temporal", "metric": "r", "value": -0.13996356613473326}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "temporal", "metric": "r2", "value": -0.33551304626032974}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "anomaly", "metric": "r", "value": -0.040817423210382744}, {"model": "random_forest", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_ef2b9c7c.png", "scatter": "assets/wheat_ES_scatter_3b0a90b9.png", "temporal": "assets/wheat_ES_temporal_a8a15582.png"}, "view": "anomaly", "metric": "r2", "value": -0.7345252523234815}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "region_year", "metric": "r", "value": 0.6595568341121625}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "region_year", "metric": "r2", "value": 0.42544898189360814}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "region_year", "metric": "nrmse", "value": 0.30633547526010657}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "region_year", "metric": "median_r2", "value": 0.22499999069226373}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "spatial", "metric": "r", "value": 0.8042171107752081}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "spatial", "metric": "r2", "value": 0.6413638757529987}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "temporal", "metric": "r", "value": 0.28334740331369945}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "temporal", "metric": "r2", "value": -0.11922742111875051}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "anomaly", "metric": "r", "value": 0.1443411983243586}, {"model": "ridge", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_6477a9b3.png", "scatter": "assets/wheat_ES_scatter_236cb93d.png", "temporal": "assets/wheat_ES_temporal_4a873a05.png"}, "view": "anomaly", "metric": "r2", "value": -0.44996244151226295}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "region_year", "metric": "r", "value": 0.592085516945279}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "region_year", "metric": "r2", "value": 0.3294033385555548}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "region_year", "metric": "nrmse", "value": 0.3309509922450238}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "region_year", "metric": "median_r2", "value": 0.2887886495259765}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "spatial", "metric": "r", "value": 0.7628354836240272}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "spatial", "metric": "r2", "value": 0.5816765720855713}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "temporal", "metric": "r", "value": -0.21609678146993636}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "temporal", "metric": "r2", "value": -0.49285639693521066}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "anomaly", "metric": "r", "value": -0.06784067290610858}, {"model": "tabdpt", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_dc563bab.png", "scatter": "assets/wheat_ES_scatter_e9359f48.png", "temporal": "assets/wheat_ES_temporal_e5142a53.png"}, "view": "anomaly", "metric": "r2", "value": -0.692347488483448}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "region_year", "metric": "r", "value": 0.6583642883159904}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "region_year", "metric": "r2", "value": 0.37174808305988305}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "region_year", "metric": "nrmse", "value": 0.32033169018098545}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "region_year", "metric": "median_r2", "value": 0.03535487644164448}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "spatial", "metric": "r", "value": 0.8265445878492828}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "spatial", "metric": "r2", "value": 0.6150812096689003}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "temporal", "metric": "r", "value": 0.07060571355655627}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "temporal", "metric": "r2", "value": -0.25640135829185207}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "anomaly", "metric": "r", "value": -0.021929537087528678}, {"model": "trend", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_f185620f.png", "scatter": "assets/wheat_ES_scatter_6233188d.png", "temporal": "assets/wheat_ES_temporal_57cce8d6.png"}, "view": "anomaly", "metric": "r2", "value": -0.5854844124609466}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "region_year", "metric": "r", "value": 0.6718757355459781}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "region_year", "metric": "r2", "value": 0.3494971787759027}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "region_year", "metric": "nrmse", "value": 0.3562052617743289}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "region_year", "metric": "median_r2", "value": -0.0297969211430682}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "spatial", "metric": "r", "value": 0.9541226835203827}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "spatial", "metric": "r2", "value": 0.836127500132569}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "temporal", "metric": "r", "value": 0.005919951630300369}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "temporal", "metric": "r2", "value": -0.36924829354299327}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "anomaly", "metric": "r", "value": -0.12643480156884052}, {"model": "twso_bc", "dataset": "wheat_ES", "n_regions": 19, "n_years": 5, "n_samples": 91, "images": {"map_actual": "assets/wheat_ES_map_actual_b0f75068.png", "map_pred": "assets/wheat_ES_map_pred_53f824a8.png", "scatter": "assets/wheat_ES_scatter_d564d6b6.png", "temporal": "assets/wheat_ES_temporal_3635b518.png"}, "view": "anomaly", "metric": "r2", "value": -0.741525786619684}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "region_year", "metric": "r", "value": 0.5730236302837899}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "region_year", "metric": "r2", "value": 0.3005343463455803}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "region_year", "metric": "nrmse", "value": 0.33799960362074283}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "region_year", "metric": "median_r2", "value": 0.0203587790259655}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "spatial", "metric": "r", "value": 0.673833914041462}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "spatial", "metric": "r2", "value": 0.4456425986845661}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "temporal", "metric": "r", "value": -0.16286706227585304}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "temporal", "metric": "r2", "value": -0.5195624308999895}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "anomaly", "metric": "r", "value": -0.047280945489329096}, {"model": "xgboost", "dataset": "wheat_ES", "n_regions": 46, "n_years": 5, "n_samples": 193, "images": {"map_actual": "assets/wheat_ES_map_actual.png", "map_pred": "assets/wheat_ES_map_pred_a1e93c63.png", "scatter": "assets/wheat_ES_scatter_27d14fcc.png", "temporal": "assets/wheat_ES_temporal_d7d82cfa.png"}, "view": "anomaly", "metric": "r2", "value": -0.7652025581110886}];
+    const coverageInfo = document.getElementById("coverage-info");
+    const heatmapWrap = document.getElementById("heatmap-wrap");
+    const datasetFilter = document.getElementById("dataset-filter");
+    const modelFilter = document.getElementById("model-filter");
+    const groupDatasets = document.getElementById("group-datasets");
+    const colorModeSelect = document.getElementById("color-mode");
+    const selectionLabel = document.getElementById("selection-label");
+    const missingNote = document.getElementById("missing-note");
+    const imgGrid = document.getElementById("img-grid");
+    const drillColB = document.getElementById("drill-col-b");
+    const mapCaptionLeft = document.getElementById("map-caption-left");
+    const mapCaptionRight = document.getElementById("map-caption-right");
+    const drillImageA = document.getElementById("drill-image-a");
+    const drillImageB = document.getElementById("drill-image-b");
+    const panelButtons = Array.from(document.querySelectorAll(".toolbar button"));
+
+    const METRIC_COLUMNS = [
+      { key: "region_year_r", label: "r", group: "Region-Year", higherBetter: true },
+      { key: "region_year_r2", label: "R²", group: "Region-Year", higherBetter: true },
+      { key: "region_year_nrmse", label: "NRMSE", group: "Region-Year", higherBetter: false },
+      { key: "region_year_median_r2", label: "med R²/yr", group: "Region-Year", higherBetter: true },
+      { key: "spatial_r", label: "r", group: "Spatial", higherBetter: true },
+      { key: "spatial_r2", label: "R²", group: "Spatial", higherBetter: true },
+      { key: "temporal_r", label: "r", group: "Temporal", higherBetter: true },
+      { key: "temporal_r2", label: "R²", group: "Temporal", higherBetter: true },
+      { key: "anomaly_r", label: "r", group: "Anomaly", higherBetter: true },
+      { key: "anomaly_r2", label: "R²", group: "Anomaly", higherBetter: true },
+    ];
+
+    // Absolute color scales — comparable across rows and dashboards.
+    const FIXED_SCALES = {
+      region_year_r: { min: 0, max: 1, higherBetter: true },
+      region_year_r2: { min: 0, max: 1, higherBetter: true },
+      region_year_nrmse: { min: 0, max: 0.5, higherBetter: false },
+      region_year_median_r2: { min: 0, max: 1, higherBetter: true },
+      spatial_r: { min: 0, max: 1, higherBetter: true },
+      spatial_r2: { min: 0, max: 1, higherBetter: true },
+      temporal_r: { min: 0, max: 1, higherBetter: true },
+      temporal_r2: { min: 0, max: 1, higherBetter: true },
+      anomaly_r: { min: 0, max: 1, higherBetter: true },
+      anomaly_r2: { min: 0, max: 1, higherBetter: true },
+    };
+
+    let selectedCell = null;
+    let activePanel = "maps";
+    let allRows = [];
+    let sortKey = "region_year_nrmse";
+    let sortDir = "asc";
+    let colorMode = "fixed";
+
+    function parseDataset(dataset) {
+      const idx = dataset.lastIndexOf("_");
+      if (idx <= 0) return { crop: dataset, country: "" };
+      return { crop: dataset.slice(0, idx), country: dataset.slice(idx + 1) };
+    }
+
+    function formatValue(v) {
+      return (v === null || v === undefined || Number.isNaN(v)) ? "-" : v.toFixed(3);
+    }
+
+    function metricValue(row, key) {
+      const v = row.metrics[key];
+      return (v === null || v === undefined || Number.isNaN(v)) ? null : v;
+    }
+
+    function compareRows(a, b) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      const getSortVal = (row) => {
+        if (sortKey === "dataset") return row.dataset;
+        if (sortKey === "model") return row.model;
+        if (sortKey === "n_regions") return row.n_regions;
+        if (sortKey === "n_years") return row.n_years;
+        if (sortKey === "n_samples") return row.n_samples;
+        return metricValue(row, sortKey);
+      };
+      const av = getSortVal(a);
+      const bv = getSortVal(b);
+      const aMissing = av === null || av === undefined || av === "";
+      const bMissing = bv === null || bv === undefined || bv === "";
+      if (aMissing && bMissing) return a.model.localeCompare(b.model);
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      if (typeof av === "string") return dir * av.localeCompare(bv);
+      return dir * (av - bv);
+    }
+
+    function heatColor(value, min, max, higherBetter) {
+      if (value === null || min === null || max === null || min === max) return null;
+      const t = higherBetter
+        ? (value - min) / (max - min)
+        : (max - value) / (max - min);
+      const clamped = Math.max(0, Math.min(1, t));
+      const hue = Math.round(clamped * 120);
+      const alpha = 0.12 + clamped * 0.28;
+      return `hsla(${hue}, 55%, 42%, ${alpha.toFixed(2)})`;
+    }
+
+    function columnStats(rows, key) {
+      const vals = rows.map(r => metricValue(r, key)).filter(v => v !== null);
+      if (!vals.length) return { min: null, max: null };
+      return { min: Math.min(...vals), max: Math.max(...vals) };
+    }
+
+    function scaleForColumn(key, rows) {
+      if (colorMode === "fixed" && FIXED_SCALES[key]) {
+        return FIXED_SCALES[key];
+      }
+      const col = METRIC_COLUMNS.find(c => c.key === key);
+      const stats = columnStats(rows, key);
+      return {
+        min: stats.min,
+        max: stats.max,
+        higherBetter: col ? col.higherBetter : true,
+      };
+    }
+
+    function buildRows() {
+      const grouped = new Map();
+      for (const rec of DATA) {
+        const key = `${rec.dataset}|||${rec.model}`;
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            dataset: rec.dataset,
+            model: rec.model,
+            n_regions: rec.n_regions,
+            n_years: rec.n_years,
+            n_samples: rec.n_samples,
+            images: rec.images || {},
+            metrics: {},
+          });
+        }
+        grouped.get(key).metrics[`${rec.view}_${rec.metric}`] = rec.value;
+      }
+      allRows = Array.from(grouped.values());
+    }
+
+    function filteredRows() {
+      const ds = datasetFilter.value;
+      const modelQ = modelFilter.value.trim().toLowerCase();
+      let rows = allRows.filter(r => {
+        if (ds && r.dataset !== ds) return false;
+        if (modelQ && !r.model.toLowerCase().includes(modelQ)) return false;
+        return true;
+      });
+      rows.sort((a, b) => {
+        if (groupDatasets.checked && sortKey !== "dataset") {
+          const byDs = a.dataset.localeCompare(b.dataset);
+          if (byDs !== 0) return byDs;
+        }
+        return compareRows(a, b);
+      });
+      return rows;
+    }
+
+    function renderDatasetCell(row, showLabel) {
+      if (!showLabel) return `<td class="dataset-cell continued">.</td>`;
+      const parts = parseDataset(row.dataset);
+      const country = parts.country
+        ? `<span class="badge country">${parts.country}</span>`
+        : "";
+      return `<td class="dataset-cell"><span class="dataset-parts"><span class="badge">${parts.crop}</span>${country}</span></td>`;
+    }
+
+    function renderHeatmap({ preserveSelection = false } = {}) {
+      const prev = preserveSelection && selectedCell
+        ? `${selectedCell.dataset}|||${selectedCell.model}`
+        : null;
+      const rows = filteredRows();
+      const datasets = Array.from(new Set(allRows.map(r => r.dataset))).sort();
+      const models = Array.from(new Set(allRows.map(r => r.model))).sort();
+
+      const existing = datasetFilter.value;
+      datasetFilter.innerHTML = `<option value="">All datasets</option>` +
+        datasets.map(d => `<option value="${d}">${d}</option>`).join("");
+      if (datasets.includes(existing)) datasetFilter.value = existing;
+
+      coverageInfo.textContent =
+        `Showing ${rows.length} of ${allRows.length} rows (datasets=${datasets.length}, models=${models.length})`;
+
+      const stats = {};
+      for (const col of METRIC_COLUMNS) {
+        stats[col.key] = scaleForColumn(col.key, rows);
+      }
+
+      const sortMark = (key) => sortKey === key
+        ? `<span class="sort-mark">${sortDir === "asc" ? "▲" : "▼"}</span>`
+        : `<span class="sort-mark"></span>`;
+
+      let html = `
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2" class="sortable" data-sort="dataset">Dataset ${sortMark("dataset")}</th>
+      <th rowspan="2" class="sortable" data-sort="model">Model ${sortMark("model")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_regions">Regions ${sortMark("n_regions")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_years">Years ${sortMark("n_years")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_samples">Samples ${sortMark("n_samples")}</th>
+      <th colspan="4" class="group-head">Region-Year</th>
+      <th colspan="2" class="group-head">Spatial</th>
+      <th colspan="2" class="group-head">Temporal</th>
+      <th colspan="2" class="group-head">Anomaly</th>
+    </tr>
+    <tr>`;
+      for (const col of METRIC_COLUMNS) {
+        html += `<th class="sortable" data-sort="${col.key}">${col.label} ${sortMark(col.key)}</th>`;
+      }
+      html += `</tr></thead><tbody>`;
+
+      let prevDataset = null;
+      rows.forEach((row, idx) => {
+        const groupClass = idx % 2 === 0 ? "group-a" : "group-b";
+        const showDataset = !groupDatasets.checked || row.dataset !== prevDataset || datasetFilter.value;
+        prevDataset = row.dataset;
+        const payload = encodeURIComponent(JSON.stringify(row));
+        html += `<tr class="metric-row ${groupClass}" data-row="${payload}">`;
+        html += renderDatasetCell(row, showDataset);
+        html += `<td>${row.model}</td><td>${row.n_regions ?? "—"}</td><td>${row.n_years ?? "—"}</td><td>${row.n_samples ?? "—"}</td>`;
+        for (const col of METRIC_COLUMNS) {
+          const v = metricValue(row, col.key);
+          const scale = stats[col.key];
+          const bg = heatColor(v, scale.min, scale.max, scale.higherBetter);
+          const style = bg ? ` style="background-color:${bg}"` : "";
+          const cls = v === null ? "metric-cell missing" : "metric-cell";
+          html += `<td class="${cls}"${style}>${formatValue(v)}</td>`;
+        }
+        html += `</tr>`;
+      });
+      html += "</tbody></table>";
+      heatmapWrap.innerHTML = html;
+
+      const metricRows = Array.from(heatmapWrap.querySelectorAll("tr.metric-row"));
+      metricRows.forEach(tr => {
+        tr.addEventListener("click", () => {
+          metricRows.forEach(r => r.classList.remove("selected"));
+          tr.classList.add("selected");
+          selectedCell = JSON.parse(decodeURIComponent(tr.dataset.row));
+          refreshDrill();
+        });
+      });
+
+      heatmapWrap.querySelectorAll("th.sortable").forEach(th => {
+        th.addEventListener("click", () => {
+          const key = th.dataset.sort;
+          if (sortKey === key) {
+            sortDir = sortDir === "asc" ? "desc" : "asc";
+          } else {
+            sortKey = key;
+            const col = METRIC_COLUMNS.find(c => c.key === key);
+            if (col) {
+              sortDir = col.higherBetter ? "desc" : "asc";
+            } else if (key === "dataset" || key === "model") {
+              sortDir = "asc";
+            } else {
+              sortDir = "desc";
+            }
+          }
+          renderHeatmap({ preserveSelection: true });
+        });
+      });
+
+      if (prev) {
+        const target = metricRows.find(r => {
+          const rec = JSON.parse(decodeURIComponent(r.dataset.row));
+          return `${rec.dataset}|||${rec.model}` === prev;
+        });
+        if (target) {
+          target.click();
+          return;
+        }
+      }
+
+      if (metricRows.length > 0) {
+        metricRows[0].click();
+      } else {
+        selectedCell = null;
+        drillImageA.removeAttribute("src");
+        drillImageB.removeAttribute("src");
+        missingNote.textContent = "No rows match the current filters.";
+        selectionLabel.textContent = "No selection.";
+      }
+    }
+
+    function refreshDrill() {
+      if (!selectedCell) return;
+      const parts = parseDataset(selectedCell.dataset);
+      const label = parts.country
+        ? `${parts.crop} (${parts.country}) · ${selectedCell.model}`
+        : `${selectedCell.dataset} · ${selectedCell.model}`;
+      selectionLabel.textContent = label;
+      const images = selectedCell.images || {};
+      missingNote.textContent = "";
+
+      if (activePanel === "maps") {
+        imgGrid.classList.add("two");
+        drillColB.style.display = "";
+        mapCaptionLeft.style.display = "";
+        mapCaptionRight.style.display = "";
+        mapCaptionLeft.textContent = "Ground truth (mean yield)";
+        mapCaptionRight.textContent = "Model prediction";
+
+        const actual = images["map_actual"] || "";
+        const pred = images["map_pred"] || "";
+        if (!actual && !pred) {
+          drillImageA.removeAttribute("src");
+          drillImageB.removeAttribute("src");
+          missingNote.textContent =
+            "No map images found. Re-run collect with plot enabled.";
+          return;
+        }
+        if (actual) drillImageA.src = actual; else drillImageA.removeAttribute("src");
+        if (pred) drillImageB.src = pred; else drillImageB.removeAttribute("src");
+        return;
+      }
+
+      imgGrid.classList.remove("two");
+      drillColB.style.display = "none";
+      mapCaptionLeft.style.display = "none";
+      mapCaptionRight.style.display = "none";
+      drillImageB.removeAttribute("src");
+
+      const path = images[activePanel] || "";
+      if (!path) {
+        drillImageA.removeAttribute("src");
+        missingNote.textContent = `No image found for panel: ${activePanel}`;
+        return;
+      }
+      drillImageA.src = path;
+    }
+
+    datasetFilter.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    modelFilter.addEventListener("input", () => renderHeatmap({ preserveSelection: true }));
+    groupDatasets.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    colorModeSelect.addEventListener("change", () => {
+      colorMode = colorModeSelect.value;
+      renderHeatmap({ preserveSelection: true });
+    });
+
+    panelButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        panelButtons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activePanel = btn.dataset.panel;
+        refreshDrill();
+      });
+    });
+
+    drillImageA.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load image. Re-run collect with plot enabled to regenerate dashboard assets.";
+    });
+    drillImageB.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load prediction map. Re-run collect with plot enabled.";
+    });
+
+    buildRows();
+    renderHeatmap();
+  </script>
