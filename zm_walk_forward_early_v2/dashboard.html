@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CY-Bench Multi-Model Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --card: #fff;
+      --border: #d8dee4;
+      --text: #1f2328;
+      --muted: #656d76;
+      --accent: #0969da;
+      --accent-soft: #ddf4ff;
+      --group-a: #f6f8fa;
+      --group-b: #fff;
+      --good: #1a7f37;
+      --bad: #cf222e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1.25rem;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .page { max-width: 1400px; margin: 0 auto; }
+    h2 { margin: 0 0 1rem; font-size: 1.35rem; font-weight: 600; }
+    h3 { margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+    }
+    .card + .card { margin-top: 1rem; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .table-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      align-items: center;
+      margin: 0.5rem 0 0.75rem;
+    }
+    .table-controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .table-controls select,
+    .table-controls input[type="search"] {
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: inherit;
+      background: #fff;
+    }
+    .table-controls input[type="search"] { min-width: 10rem; }
+    .table-scroll {
+      overflow: auto;
+      max-height: min(70vh, 720px);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.86rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.45rem 0.55rem;
+      text-align: center;
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) { text-align: left; }
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f3f4f6;
+      font-weight: 600;
+    }
+    thead tr:nth-child(2) th { top: 2.1rem; }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    th.sortable:hover { background: #e8eaed; }
+    th .sort-mark {
+      display: inline-block;
+      width: 0.9rem;
+      color: var(--accent);
+      font-size: 0.75rem;
+    }
+    th.group-head {
+      border-bottom: 2px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    th.group-head .group-hint {
+      display: block;
+      font-weight: 400;
+      font-size: 0.65rem;
+      text-transform: none;
+      letter-spacing: 0;
+      margin-top: 0.12rem;
+      line-height: 1.2;
+    }
+    th .metric-sub {
+      font-weight: 500;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    tr.metric-row { cursor: pointer; }
+    tr.metric-row:hover td { filter: brightness(0.97); }
+    tr.metric-row.selected td {
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    tr.group-a td { background: var(--group-a); }
+    tr.group-b td { background: var(--group-b); }
+    td.dataset-cell {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    td.dataset-cell.continued {
+      color: transparent;
+      user-select: none;
+    }
+    td.metric-cell { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.88rem; }
+    td.metric-cell.missing { color: #9a9a9a; }
+    td.metric-cell .metric-std { color: var(--muted); font-size: 0.92em; }
+    .dataset-parts {
+      display: flex;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .badge.country { background: #f0f0f0; color: #444; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0; }
+    .toolbar button {
+      padding: 0.4rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .toolbar button:hover { background: #f6f8fa; }
+    .toolbar button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .img-grid { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
+    .img-grid.two { grid-template-columns: 1fr 1fr; }
+    .map-caption {
+      font-size: 0.82rem;
+      margin-bottom: 0.35rem;
+      text-align: center;
+    }
+    @media (max-width: 900px) {
+      .img-grid.two { grid-template-columns: 1fr; }
+    }
+    img {
+      max-width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      min-height: 120px;
+      background: #fff;
+    }
+    .region-map-wrap { width: 100%; overflow: hidden; min-height: 280px; }
+    .region-map-wrap svg { display: block; width: 100%; height: auto; }
+    .region-map-wrap .region {
+      stroke: #fff;
+      stroke-width: 0.6px;
+      transition: fill 0.12s;
+    }
+    .region-map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin-top: 0.35rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      justify-content: center;
+    }
+    .region-map-gradient {
+      display: inline-block;
+      width: 140px;
+      height: 10px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: linear-gradient(to right, #ffffcc, #fd8d3c, #800026);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h2>CY-Bench multi-model local dashboard</h2>
+    <div class="card">
+      <h3>Model comparison</h3>
+      <div class="muted" id="coverage-info"></div>
+      <div class="table-controls">
+        <label>
+          Dataset
+          <select id="dataset-filter">
+            <option value="">All datasets</option>
+          </select>
+        </label>
+        <label>
+          Model
+          <input type="search" id="model-filter" placeholder="Filter models…" />
+        </label>
+        <label>
+          <input type="checkbox" id="group-datasets" checked />
+          Group by dataset
+        </label>
+        <label>
+          Colors
+          <select id="color-mode">
+            <option value="fixed" selected>Fixed scale (absolute)</option>
+            <option value="column">Relative to filtered rows</option>
+          </select>
+        </label>
+      </div>
+      <div class="muted" style="margin-bottom: 0.5rem;">Click a column header to sort. Lower NRMSE is better; higher R² and r are better. Pattern axes use Pearson r (med/yr, med/reg, or aggregate). Fixed colors: NRMSE 0–0.5, R² 0–1, r −1–1.</div>
+      <div class="table-scroll" id="heatmap-wrap"></div>
+    </div>
+
+    <div class="card" id="drill-down">
+      <h3>Drill-down plots</h3>
+      <div id="selection-label" class="muted">Click a table row to inspect plots.</div>
+      <div class="toolbar">
+        <button data-panel="maps" class="active">Maps</button>
+        <button data-panel="scatter">Scatter</button>
+        <button data-panel="temporal">Temporal</button>
+      </div>
+      <div id="missing-note" class="muted"></div>
+      <div id="map-grid-dynamic" class="img-grid two" style="display:none;">
+        <div>
+          <div id="map-caption-left-dyn" class="map-caption muted">Ground truth (mean yield)</div>
+          <div id="region-map-actual" class="region-map-wrap"></div>
+          <div class="region-map-legend"><span class="region-map-gradient" aria-hidden="true"></span><span id="region-map-legend-actual">—</span></div>
+        </div>
+        <div>
+          <div id="map-caption-right-dyn" class="map-caption muted">Model prediction</div>
+          <div id="region-map-pred" class="region-map-wrap"></div>
+          <div class="region-map-legend"><span class="region-map-gradient" aria-hidden="true"></span><span id="region-map-legend-pred">—</span></div>
+        </div>
+      </div>
+      <div id="img-grid" class="img-grid two">
+        <div>
+          <div id="map-caption-left" class="map-caption muted">Ground truth (mean yield)</div>
+          <img id="drill-image-a" alt="Ground truth map" />
+        </div>
+        <div id="drill-col-b">
+          <div id="map-caption-right" class="map-caption muted">Model prediction</div>
+          <img id="drill-image-b" alt="Model prediction map" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DATA = [{"model": "lpjml_bc", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter.png", "temporal": "assets/maize_ZM_temporal.png"}, "view": "region_year", "metric": "r2", "value": -2.1306043289889454, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter.png", "temporal": "assets/maize_ZM_temporal.png"}, "view": "region_year", "metric": "nrmse", "value": 0.7425657569238671, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter.png", "temporal": "assets/maize_ZM_temporal.png"}, "view": "spatial", "metric": "r", "value": 0.42785709646329434, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter.png", "temporal": "assets/maize_ZM_temporal.png"}, "view": "spatial", "metric": "r_agg", "value": 0.5014372746565392, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter.png", "temporal": "assets/maize_ZM_temporal.png"}, "view": "temporal", "metric": "r", "value": 0.10379546316825591, "value_std": 1.5515838457795457e-17}, {"model": "lpjml_bc", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter.png", "temporal": "assets/maize_ZM_temporal.png"}, "view": "temporal", "metric": "r_agg", "value": -0.07527283022354515, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter.png", "temporal": "assets/maize_ZM_temporal.png"}, "view": "anomaly", "metric": "r", "value": 0.0058618348631550715, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter.png", "temporal": "assets/maize_ZM_temporal.png"}, "view": "anomaly", "metric": "r2", "value": -20.562735949962867, "value_std": 0.0}, {"model": "xgboost", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter_3e7ac291.png", "temporal": "assets/maize_ZM_temporal_0aec58d5.png"}, "view": "region_year", "metric": "r2", "value": 0.4522875976151302, "value_std": 0.0010013317389433462}, {"model": "xgboost", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter_3e7ac291.png", "temporal": "assets/maize_ZM_temporal_0aec58d5.png"}, "view": "region_year", "metric": "nrmse", "value": 0.31059679487270075, "value_std": 0.00028387740025801123}, {"model": "xgboost", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter_3e7ac291.png", "temporal": "assets/maize_ZM_temporal_0aec58d5.png"}, "view": "spatial", "metric": "r", "value": 0.8311613979010073, "value_std": 0.002336987361839361}, {"model": "xgboost", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter_3e7ac291.png", "temporal": "assets/maize_ZM_temporal_0aec58d5.png"}, "view": "spatial", "metric": "r_agg", "value": 0.9029928257386413, "value_std": 0.0007150532190144137}, {"model": "xgboost", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter_3e7ac291.png", "temporal": "assets/maize_ZM_temporal_0aec58d5.png"}, "view": "temporal", "metric": "r", "value": -0.3017242702531547, "value_std": 0.030214725540974787}, {"model": "xgboost", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter_3e7ac291.png", "temporal": "assets/maize_ZM_temporal_0aec58d5.png"}, "view": "temporal", "metric": "r_agg", "value": -0.605526586329736, "value_std": 0.018805463095858035}, {"model": "xgboost", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter_3e7ac291.png", "temporal": "assets/maize_ZM_temporal_0aec58d5.png"}, "view": "anomaly", "metric": "r", "value": -0.09243462095571808, "value_std": 0.001956688022147882}, {"model": "xgboost", "dataset": "maize_ZM", "n_regions": 71, "n_years": 5, "n_samples": 355, "images": {"scatter": "assets/maize_ZM_scatter_3e7ac291.png", "temporal": "assets/maize_ZM_temporal_0aec58d5.png"}, "view": "anomaly", "metric": "r2", "value": -2.7724914003932746, "value_std": 0.0068968958118466196}];
+    const MAP_DATA = {"geojson_by_country": {"ZM": "assets/regions_ZM.geojson"}, "datasets": {"maize_ZM": {"country": "ZM", "actual": {"ZM-A2-0101": 2.0148, "ZM-A2-0105": 2.5504, "ZM-A2-0106": 2.5018, "ZM-A2-0110": 3.372, "ZM-A2-0111": 2.6642, "ZM-A2-0113": 1.7052, "ZM-A2-0201": 2.3024, "ZM-A2-0202": 2.93, "ZM-A2-0203": 2.7632, "ZM-A2-0204": 2.5446, "ZM-A2-0205": 2.5946, "ZM-A2-0206": 2.197, "ZM-A2-0207": 2.1136, "ZM-A2-0208": 2.8154, "ZM-A2-0209": 3.0284, "ZM-A2-0210": 2.631, "ZM-A2-0302": 2.0722, "ZM-A2-0304": 2.4986, "ZM-A2-0305": 1.4922, "ZM-A2-0306": 1.6868, "ZM-A2-0307": 1.7208, "ZM-A2-0312": 2.2302, "ZM-A2-0313": 1.5396, "ZM-A2-0401": 2.1144, "ZM-A2-0404": 3.0818, "ZM-A2-0406": 2.7836, "ZM-A2-0407": 2.664, "ZM-A2-0410": 2.4542, "ZM-A2-0414": 2.3802, "ZM-A2-0415": 3.0044, "ZM-A2-0505": 0.644, "ZM-A2-0506": 2.2002, "ZM-A2-0511": 2.3528, "ZM-A2-0512": 2.755, "ZM-A2-0601": 1.922, "ZM-A2-0603": 3.237, "ZM-A2-0604": 3.4466, "ZM-A2-0605": 3.346, "ZM-A2-0606": 2.8176, "ZM-A2-0701": 2.6896, "ZM-A2-0702": 1.7954, "ZM-A2-0703": 3.3456, "ZM-A2-0704": 3.362, "ZM-A2-0707": 3.3164, "ZM-A2-0714": 2.7488, "ZM-A2-0801": 2.5132, "ZM-A2-0802": 2.8866, "ZM-A2-0804": 2.7182, "ZM-A2-0806": 2.4728, "ZM-A2-0808": 3.4646, "ZM-A2-0810": 1.5804, "ZM-A2-0811": 1.8598, "ZM-A2-0814": 2.6282, "ZM-A2-0902": 1.7946, "ZM-A2-0903": 1.6784, "ZM-A2-0905": 1.1206, "ZM-A2-0906": 0.6468, "ZM-A2-0908": 1.5098, "ZM-A2-0909": 1.181, "ZM-A2-0910": 1.2664, "ZM-A2-0911": 0.9798, "ZM-A2-0912": 1.1022, "ZM-A2-0916": 1.6006, "ZM-A2-0917": 2.1366, "ZM-A2-1001": 0.4068, "ZM-A2-1007": 0.564, "ZM-A2-1012": 0.4922, "ZM-A2-1014": 0.422, "ZM-A2-1018": 1.662, "ZM-A2-1019": 0.8774, "ZM-A2-1020": 0.4768}, "models": {"lpjml_bc": {"ZM-A2-0101": 1.0148, "ZM-A2-0105": 1.4138, "ZM-A2-0106": 0.723, "ZM-A2-0110": 0.9782, "ZM-A2-0111": 1.4216, "ZM-A2-0113": 1.039, "ZM-A2-0201": 1.8774, "ZM-A2-0202": 1.9918, "ZM-A2-0203": 1.535, "ZM-A2-0204": 1.4312, "ZM-A2-0205": 1.1608, "ZM-A2-0206": 1.003, "ZM-A2-0207": 1.987, "ZM-A2-0208": 1.2182, "ZM-A2-0209": 1.3512, "ZM-A2-0210": 1.8972, "ZM-A2-0302": 0.6448, "ZM-A2-0304": 0.7146, "ZM-A2-0305": 0.6022, "ZM-A2-0306": 0.6866, "ZM-A2-0307": 0.4284, "ZM-A2-0312": 0.6212, "ZM-A2-0313": 0.4886, "ZM-A2-0401": 0.6028, "ZM-A2-0404": 2.4354, "ZM-A2-0406": 1.8456, "ZM-A2-0407": 0.292, "ZM-A2-0410": 0.1204, "ZM-A2-0414": 0.7142, "ZM-A2-0415": 1.3764, "ZM-A2-0505": -0.1196, "ZM-A2-0506": 0.3648, "ZM-A2-0511": 1.0188, "ZM-A2-0512": 1.1992, "ZM-A2-0601": 0.9666, "ZM-A2-0603": 1.0416, "ZM-A2-0604": 1.16, "ZM-A2-0605": 0.9108, "ZM-A2-0606": 1.1012, "ZM-A2-0701": 1.2894, "ZM-A2-0702": 1.2542, "ZM-A2-0703": 1.99, "ZM-A2-0704": 1.6686, "ZM-A2-0707": 0.9584, "ZM-A2-0714": 1.6678, "ZM-A2-0801": -0.1208, "ZM-A2-0802": -0.1208, "ZM-A2-0804": 2.0782, "ZM-A2-0806": 2.1878, "ZM-A2-0808": -0.1208, "ZM-A2-0810": 0.7186, "ZM-A2-0811": -0.1208, "ZM-A2-0814": 2.2704, "ZM-A2-0902": 1.4634, "ZM-A2-0903": 0.2708, "ZM-A2-0905": 0.8766, "ZM-A2-0906": 0.8954, "ZM-A2-0908": 1.0004, "ZM-A2-0909": 1.2894, "ZM-A2-0910": 1.2336, "ZM-A2-0911": -0.0772, "ZM-A2-0912": 0.3722, "ZM-A2-0916": 1.4602, "ZM-A2-0917": 0.8482, "ZM-A2-1001": -0.1208, "ZM-A2-1007": -0.1208, "ZM-A2-1012": -0.1208, "ZM-A2-1014": -0.1208, "ZM-A2-1018": 1.0872, "ZM-A2-1019": -0.1082, "ZM-A2-1020": 0.5522}, "xgboost": {"ZM-A2-0101": 2.0776, "ZM-A2-0105": 2.4396, "ZM-A2-0106": 2.3256, "ZM-A2-0110": 2.9112, "ZM-A2-0111": 2.7426, "ZM-A2-0113": 1.7772, "ZM-A2-0201": 2.182, "ZM-A2-0202": 2.1966, "ZM-A2-0203": 2.2716, "ZM-A2-0204": 2.172, "ZM-A2-0205": 2.149, "ZM-A2-0206": 2.0852, "ZM-A2-0207": 2.213, "ZM-A2-0208": 2.461, "ZM-A2-0209": 2.1864, "ZM-A2-0210": 2.171, "ZM-A2-0302": 1.5968, "ZM-A2-0304": 1.6842, "ZM-A2-0305": 1.107, "ZM-A2-0306": 1.1644, "ZM-A2-0307": 1.4556, "ZM-A2-0312": 1.8578, "ZM-A2-0313": 1.5318, "ZM-A2-0401": 1.8474, "ZM-A2-0404": 2.4028, "ZM-A2-0406": 2.3298, "ZM-A2-0407": 2.2612, "ZM-A2-0410": 1.7012, "ZM-A2-0414": 2.0468, "ZM-A2-0415": 2.2328, "ZM-A2-0505": 0.8182, "ZM-A2-0506": 2.4844, "ZM-A2-0511": 2.2278, "ZM-A2-0512": 1.836, "ZM-A2-0601": 1.387, "ZM-A2-0603": 2.3416, "ZM-A2-0604": 2.3642, "ZM-A2-0605": 2.47, "ZM-A2-0606": 2.4108, "ZM-A2-0701": 2.3016, "ZM-A2-0702": 1.5576, "ZM-A2-0703": 2.5244, "ZM-A2-0704": 2.5346, "ZM-A2-0707": 2.4646, "ZM-A2-0714": 2.2402, "ZM-A2-0801": 1.3364, "ZM-A2-0802": 2.214, "ZM-A2-0804": 2.0838, "ZM-A2-0806": 1.6524, "ZM-A2-0808": 2.327, "ZM-A2-0810": 2.0244, "ZM-A2-0811": 1.252, "ZM-A2-0814": 1.5108, "ZM-A2-0902": 1.6742, "ZM-A2-0903": 1.2362, "ZM-A2-0905": 0.9308, "ZM-A2-0906": 0.832, "ZM-A2-0908": 1.5234, "ZM-A2-0909": 1.3018, "ZM-A2-0910": 1.2498, "ZM-A2-0911": 0.9024, "ZM-A2-0912": 0.9838, "ZM-A2-0916": 1.4396, "ZM-A2-0917": 1.665, "ZM-A2-1001": 0.7112, "ZM-A2-1007": 0.6982, "ZM-A2-1012": 0.664, "ZM-A2-1014": 0.6642, "ZM-A2-1018": 1.128, "ZM-A2-1019": 0.8888, "ZM-A2-1020": 0.6756}}, "n_regions": 71}}, "note": "Regional means across years (same aggregation as matplotlib map panels). Geometry is simplified admin boundaries from cybench/data/polygons."};
+    const coverageInfo = document.getElementById("coverage-info");
+    const heatmapWrap = document.getElementById("heatmap-wrap");
+    const datasetFilter = document.getElementById("dataset-filter");
+    const modelFilter = document.getElementById("model-filter");
+    const groupDatasets = document.getElementById("group-datasets");
+    const colorModeSelect = document.getElementById("color-mode");
+    const selectionLabel = document.getElementById("selection-label");
+    const missingNote = document.getElementById("missing-note");
+    const imgGrid = document.getElementById("img-grid");
+    const drillColB = document.getElementById("drill-col-b");
+    const mapCaptionLeft = document.getElementById("map-caption-left");
+    const mapCaptionRight = document.getElementById("map-caption-right");
+    const drillImageA = document.getElementById("drill-image-a");
+    const drillImageB = document.getElementById("drill-image-b");
+    const mapGridDynamic = document.getElementById("map-grid-dynamic");
+    const regionMapActual = document.getElementById("region-map-actual");
+    const regionMapPred = document.getElementById("region-map-pred");
+    const regionMapLegendActual = document.getElementById("region-map-legend-actual");
+    const regionMapLegendPred = document.getElementById("region-map-legend-pred");
+    const panelButtons = Array.from(document.querySelectorAll(".toolbar button"));
+
+    const HAS_DYNAMIC_MAPS = Boolean(
+      MAP_DATA && MAP_DATA.datasets && Object.keys(MAP_DATA.datasets).length
+        && MAP_DATA.geojson_by_country && Object.keys(MAP_DATA.geojson_by_country).length
+    );
+    const geoCache = new Map();
+    const REGION_MAP_WIDTH = 520;
+    const REGION_MAP_HEIGHT = 420;
+    const REGION_MAP_MARGIN = 10;
+    const REGION_FILL_MISSING = "#f0f0f0";
+
+    function fmtMap(v, digits = 2) {
+      if (v === null || v === undefined || Number.isNaN(v)) return "—";
+      return Number(v).toFixed(digits);
+    }
+
+    async function loadCountryGeojson(country) {
+      if (geoCache.has(country)) return geoCache.get(country);
+      const href = (MAP_DATA.geojson_by_country || {})[country];
+      if (!href) return null;
+      const geo = await d3.json(href);
+      const features = (geo.features || []).map(f => ({
+        ...f,
+        properties: { ...f.properties, loc: String(f.properties.loc ?? "") },
+      }));
+      geoCache.set(country, features);
+      return features;
+    }
+
+    function yieldColor(value, extent) {
+      if (value == null || !extent) return REGION_FILL_MISSING;
+      const [lo, hi] = extent;
+      if (hi <= lo) return d3.interpolateOrRd(0.5);
+      const t = Math.max(0, Math.min(1, (value - lo) / (hi - lo)));
+      return d3.interpolateOrRd(t);
+    }
+
+    function sharedYieldExtent(actualMap, predMap) {
+      const vals = [
+        ...Object.values(actualMap || {}),
+        ...Object.values(predMap || {}),
+      ].filter(v => v != null && !Number.isNaN(v));
+      if (!vals.length) return null;
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      const pad = (hi - lo) * 0.05 || 0.5;
+      return [lo - pad, hi + pad];
+    }
+
+    function renderRegionChoropleth(container, features, valueByLoc, extent, title) {
+      container.innerHTML = "";
+      if (!features || !features.length) {
+        container.innerHTML = `<p class="muted">${title}: no geometry.</p>`;
+        return;
+      }
+      const svg = d3.select(container).append("svg")
+        .attr("viewBox", `0 0 ${REGION_MAP_WIDTH} ${REGION_MAP_HEIGHT}`)
+        .attr("role", "img")
+        .attr("aria-label", title);
+      const projection = d3.geoMercator().fitExtent(
+        [[REGION_MAP_MARGIN, REGION_MAP_MARGIN],
+         [REGION_MAP_WIDTH - REGION_MAP_MARGIN, REGION_MAP_HEIGHT - REGION_MAP_MARGIN]],
+        { type: "FeatureCollection", features },
+      );
+      const path = d3.geoPath(projection);
+      svg.selectAll("path.region")
+        .data(features)
+        .join("path")
+        .attr("class", "region")
+        .attr("d", path)
+        .attr("fill", d => {
+          const loc = d.properties.loc;
+          const v = valueByLoc ? valueByLoc[loc] : null;
+          return yieldColor(v, extent);
+        })
+        .attr("stroke", "#fff")
+        .selectAll("title")
+        .data(d => [d])
+        .join("title")
+        .text(d => {
+          const loc = d.properties.loc;
+          const v = valueByLoc ? valueByLoc[loc] : null;
+          return v == null ? `${loc}: no data` : `${loc}: ${fmtMap(v)}`;
+        });
+    }
+
+    async function renderDynamicMaps(dataset, model) {
+      const slice = (MAP_DATA.datasets || {})[dataset];
+      if (!slice) return false;
+      const country = slice.country;
+      const features = await loadCountryGeojson(country);
+      if (!features) return false;
+      const actual = slice.actual || {};
+      const pred = (slice.models || {})[model] || {};
+      const extent = sharedYieldExtent(actual, pred);
+      renderRegionChoropleth(
+        regionMapActual,
+        features,
+        actual,
+        extent,
+        "Ground truth (mean yield)",
+      );
+      renderRegionChoropleth(
+        regionMapPred,
+        features,
+        pred,
+        extent,
+        `Model prediction (${model})`,
+      );
+      if (extent) {
+        const label = `${fmtMap(extent[0])} → ${fmtMap(extent[1])}`;
+        regionMapLegendActual.textContent = label;
+        regionMapLegendPred.textContent = label;
+      }
+      return true;
+    }
+
+    function showMapMode(useDynamic) {
+      mapGridDynamic.style.display = useDynamic ? "" : "none";
+      imgGrid.style.display = useDynamic ? "none" : "";
+    }
+
+    const METRIC_COLUMNS = [
+      { key: "region_year_r2", label: "R²", group: "Region-Year", higherBetter: true, title: "R² on all region-year rows (absolute prediction quality)" },
+      { key: "region_year_nrmse", label: "NRMSE", group: "Region-Year", higherBetter: false, title: "Normalized RMSE on absolute yields" },
+      {
+        key: "spatial_r",
+        label: "r<br><span class=\"metric-sub\">med/yr</span>",
+        group: "Spatial",
+        higherBetter: true,
+        title: "Slice by year; Pearson r across regions each year; median across years (years with ≥3 regions)",
+      },
+      {
+        key: "spatial_r_agg",
+        label: "r<br><span class=\"metric-sub\">agg</span>",
+        group: "Spatial",
+        higherBetter: true,
+        title: "Mean yield across years per region; one Pearson r across regions",
+      },
+      {
+        key: "temporal_r",
+        label: "r<br><span class=\"metric-sub\">med/reg</span>",
+        group: "Temporal",
+        higherBetter: true,
+        title: "Slice by region; Pearson r across years per region; median across regions (regions with ≥3 years)",
+      },
+      {
+        key: "temporal_r_agg",
+        label: "r<br><span class=\"metric-sub\">agg</span>",
+        group: "Temporal",
+        higherBetter: true,
+        title: "Mean yield across regions each year; one Pearson r across years",
+      },
+      {
+        key: "anomaly_r",
+        label: "r<br><span class=\"metric-sub\">med/reg</span>",
+        group: "Anomaly",
+        higherBetter: true,
+        title: "Per region: Pearson r on yield minus regional mean; median across regions",
+      },
+      {
+        key: "anomaly_r_pooled",
+        label: "r<br><span class=\"metric-sub\">pooled</span>",
+        group: "Anomaly",
+        higherBetter: true,
+        title: "Pooled Pearson r on all location-de-meaned yields",
+      },
+    ];
+
+    const R_FIXED = { min: -1, max: 1, higherBetter: true };
+
+    // Absolute color scales — comparable across rows and dashboards.
+    const FIXED_SCALES = {
+      region_year_r2: { min: 0, max: 1, higherBetter: true },
+      region_year_nrmse: { min: 0, max: 0.5, higherBetter: false },
+      spatial_r: R_FIXED,
+      spatial_r_agg: R_FIXED,
+      temporal_r: R_FIXED,
+      temporal_r_agg: R_FIXED,
+      anomaly_r: R_FIXED,
+      anomaly_r_pooled: R_FIXED,
+    };
+
+    let selectedCell = null;
+    let activePanel = "maps";
+    let allRows = [];
+    let sortKey = "region_year_nrmse";
+    let sortDir = "asc";
+    let colorMode = "fixed";
+    let deepLink = readDeepLink();
+
+    function readDeepLink() {
+      const params = new URLSearchParams(window.location.search);
+      const model = (params.get("model") || "").trim();
+      if (!model) return null;
+      return {
+        model,
+        dataset: (params.get("dataset") || "").trim(),
+        panel: (params.get("panel") || "").trim(),
+      };
+    }
+
+    function rowMatchesDeepLink(row) {
+      if (!deepLink?.model) return false;
+      if (row.model.toLowerCase() !== deepLink.model.toLowerCase()) return false;
+      if (deepLink.dataset && row.dataset.toLowerCase() !== deepLink.dataset.toLowerCase()) {
+        return false;
+      }
+      return true;
+    }
+
+    function applyDeepLinkToFilters() {
+      if (!deepLink?.model) return null;
+      const match = allRows.find(rowMatchesDeepLink);
+      if (!match) return null;
+      modelFilter.value = match.model;
+      if (deepLink.dataset) datasetFilter.value = match.dataset;
+      if (["maps", "scatter", "temporal"].includes(deepLink.panel)) {
+        activePanel = deepLink.panel;
+        panelButtons.forEach(b => {
+          b.classList.toggle("active", b.dataset.panel === activePanel);
+        });
+      }
+      return match;
+    }
+
+    function parseDataset(dataset) {
+      const idx = dataset.lastIndexOf("_");
+      if (idx <= 0) return { crop: dataset, country: "" };
+      return { crop: dataset.slice(0, idx), country: dataset.slice(idx + 1) };
+    }
+
+    function formatValue(v) {
+      return (v === null || v === undefined || Number.isNaN(v)) ? "-" : v.toFixed(3);
+    }
+
+    function metricStd(row, key) {
+      const v = row.metrics[`${key}_std`];
+      return (v === null || v === undefined || Number.isNaN(v)) ? null : v;
+    }
+
+    function formatMetricCell(row, key) {
+      const v = metricValue(row, key);
+      if (v === null) return "-";
+      const std = metricStd(row, key);
+      if (std === null) return formatValue(v);
+      return `${formatValue(v)}<span class="metric-std">±${formatValue(std)}</span>`;
+    }
+
+    function metricValue(row, key) {
+      const v = row.metrics[key];
+      return (v === null || v === undefined || Number.isNaN(v)) ? null : v;
+    }
+
+    function compareRows(a, b) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      const getSortVal = (row) => {
+        if (sortKey === "dataset") return row.dataset;
+        if (sortKey === "model") return row.model;
+        if (sortKey === "n_regions") return row.n_regions;
+        if (sortKey === "n_years") return row.n_years;
+        if (sortKey === "n_samples") return row.n_samples;
+        return metricValue(row, sortKey);
+      };
+      const av = getSortVal(a);
+      const bv = getSortVal(b);
+      const aMissing = av === null || av === undefined || av === "";
+      const bMissing = bv === null || bv === undefined || bv === "";
+      if (aMissing && bMissing) return a.model.localeCompare(b.model);
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      if (typeof av === "string") return dir * av.localeCompare(bv);
+      return dir * (av - bv);
+    }
+
+    function heatColor(value, min, max, higherBetter) {
+      if (value === null || min === null || max === null || min === max) return null;
+      const t = higherBetter
+        ? (value - min) / (max - min)
+        : (max - value) / (max - min);
+      const clamped = Math.max(0, Math.min(1, t));
+      const hue = Math.round(clamped * 120);
+      const alpha = 0.12 + clamped * 0.28;
+      return `hsla(${hue}, 55%, 42%, ${alpha.toFixed(2)})`;
+    }
+
+    function columnStats(rows, key) {
+      const vals = rows.map(r => metricValue(r, key)).filter(v => v !== null);
+      if (!vals.length) return { min: null, max: null };
+      return { min: Math.min(...vals), max: Math.max(...vals) };
+    }
+
+    function scaleForColumn(key, rows) {
+      if (colorMode === "fixed" && FIXED_SCALES[key]) {
+        return FIXED_SCALES[key];
+      }
+      const col = METRIC_COLUMNS.find(c => c.key === key);
+      const stats = columnStats(rows, key);
+      return {
+        min: stats.min,
+        max: stats.max,
+        higherBetter: col ? col.higherBetter : true,
+      };
+    }
+
+    function buildRows() {
+      const grouped = new Map();
+      for (const rec of DATA) {
+        const key = `${rec.dataset}|||${rec.model}`;
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            dataset: rec.dataset,
+            model: rec.model,
+            n_regions: rec.n_regions,
+            n_years: rec.n_years,
+            n_samples: rec.n_samples,
+            images: rec.images || {},
+            metrics: {},
+          });
+        }
+        const metricKey = `${rec.view}_${rec.metric}`;
+        grouped.get(key).metrics[metricKey] = rec.value;
+        if (rec.value_std !== null && rec.value_std !== undefined && !Number.isNaN(rec.value_std)) {
+          grouped.get(key).metrics[`${metricKey}_std`] = rec.value_std;
+        }
+      }
+      allRows = Array.from(grouped.values());
+    }
+
+    function filteredRows() {
+      const ds = datasetFilter.value;
+      const modelQ = modelFilter.value.trim().toLowerCase();
+      let rows = allRows.filter(r => {
+        if (ds && r.dataset !== ds) return false;
+        if (modelQ && !r.model.toLowerCase().includes(modelQ)) return false;
+        return true;
+      });
+      rows.sort((a, b) => {
+        if (groupDatasets.checked && sortKey !== "dataset") {
+          const byDs = a.dataset.localeCompare(b.dataset);
+          if (byDs !== 0) return byDs;
+        }
+        return compareRows(a, b);
+      });
+      return rows;
+    }
+
+    function renderDatasetCell(row, showLabel) {
+      if (!showLabel) return `<td class="dataset-cell continued">.</td>`;
+      const parts = parseDataset(row.dataset);
+      const country = parts.country
+        ? `<span class="badge country">${parts.country}</span>`
+        : "";
+      return `<td class="dataset-cell"><span class="dataset-parts"><span class="badge">${parts.crop}</span>${country}</span></td>`;
+    }
+
+    function renderHeatmap({ preserveSelection = false } = {}) {
+      const prev = preserveSelection && selectedCell
+        ? `${selectedCell.dataset}|||${selectedCell.model}`
+        : null;
+
+      const datasets = Array.from(new Set(allRows.map(r => r.dataset))).sort();
+      const models = Array.from(new Set(allRows.map(r => r.model))).sort();
+      const priorDataset = datasetFilter.value;
+      const priorModel = modelFilter.value;
+
+      datasetFilter.innerHTML = `<option value="">All datasets</option>` +
+        datasets.map(d => `<option value="${d}">${d}</option>`).join("");
+
+      let deepTarget = null;
+      if (!preserveSelection && deepLink?.model) {
+        deepTarget = applyDeepLinkToFilters();
+      } else {
+        if (priorDataset && datasets.includes(priorDataset)) {
+          datasetFilter.value = priorDataset;
+        }
+        modelFilter.value = priorModel;
+      }
+
+      const rows = filteredRows();
+
+      coverageInfo.textContent =
+        `Showing ${rows.length} of ${allRows.length} rows (datasets=${datasets.length}, models=${models.length})`;
+
+      const stats = {};
+      for (const col of METRIC_COLUMNS) {
+        stats[col.key] = scaleForColumn(col.key, rows);
+      }
+
+      const sortMark = (key) => sortKey === key
+        ? `<span class="sort-mark">${sortDir === "asc" ? "▲" : "▼"}</span>`
+        : `<span class="sort-mark"></span>`;
+
+      let html = `
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2" class="sortable" data-sort="dataset">Dataset ${sortMark("dataset")}</th>
+      <th rowspan="2" class="sortable" data-sort="model">Model ${sortMark("model")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_regions">Regions ${sortMark("n_regions")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_years">Years ${sortMark("n_years")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_samples">Samples ${sortMark("n_samples")}</th>
+      <th colspan="3" class="group-head">Region-Year</th>
+      <th colspan="2" class="group-head" title="Spatial pattern recovery">Spatial<span class="group-hint">slice by year → R² → median</span></th>
+      <th colspan="2" class="group-head" title="Temporal dynamics recovery">Temporal<span class="group-hint">slice by region → R² → median</span></th>
+      <th colspan="2" class="group-head">Anomaly</th>
+    </tr>
+    <tr>`;
+      for (const col of METRIC_COLUMNS) {
+        const tip = col.title ? ` title="${col.title}"` : "";
+        html += `<th class="sortable" data-sort="${col.key}"${tip}>${col.label} ${sortMark(col.key)}</th>`;
+      }
+      html += `</tr></thead><tbody>`;
+
+      let prevDataset = null;
+      rows.forEach((row, idx) => {
+        const groupClass = idx % 2 === 0 ? "group-a" : "group-b";
+        const showDataset = !groupDatasets.checked || row.dataset !== prevDataset || datasetFilter.value;
+        prevDataset = row.dataset;
+        const payload = encodeURIComponent(JSON.stringify(row));
+        html += `<tr class="metric-row ${groupClass}" data-row="${payload}">`;
+        html += renderDatasetCell(row, showDataset);
+        html += `<td>${row.model}</td><td>${row.n_regions ?? "—"}</td><td>${row.n_years ?? "—"}</td><td>${row.n_samples ?? "—"}</td>`;
+        for (const col of METRIC_COLUMNS) {
+          const v = metricValue(row, col.key);
+          const scale = stats[col.key];
+          const bg = heatColor(v, scale.min, scale.max, scale.higherBetter);
+          const style = bg ? ` style="background-color:${bg}"` : "";
+          const cls = v === null ? "metric-cell missing" : "metric-cell";
+          html += `<td class="${cls}"${style}>${formatMetricCell(row, col.key)}</td>`;
+        }
+        html += `</tr>`;
+      });
+      html += "</tbody></table>";
+      heatmapWrap.innerHTML = html;
+
+      const metricRows = Array.from(heatmapWrap.querySelectorAll("tr.metric-row"));
+      metricRows.forEach(tr => {
+        tr.addEventListener("click", () => {
+          metricRows.forEach(r => r.classList.remove("selected"));
+          tr.classList.add("selected");
+          selectedCell = JSON.parse(decodeURIComponent(tr.dataset.row));
+          refreshDrill();
+        });
+      });
+
+      heatmapWrap.querySelectorAll("th.sortable").forEach(th => {
+        th.addEventListener("click", () => {
+          const key = th.dataset.sort;
+          if (sortKey === key) {
+            sortDir = sortDir === "asc" ? "desc" : "asc";
+          } else {
+            sortKey = key;
+            const col = METRIC_COLUMNS.find(c => c.key === key);
+            if (col) {
+              sortDir = col.higherBetter ? "desc" : "asc";
+            } else if (key === "dataset" || key === "model") {
+              sortDir = "asc";
+            } else {
+              sortDir = "desc";
+            }
+          }
+          renderHeatmap({ preserveSelection: true });
+        });
+      });
+
+      if (prev) {
+        const target = metricRows.find(r => {
+          const rec = JSON.parse(decodeURIComponent(r.dataset.row));
+          return `${rec.dataset}|||${rec.model}` === prev;
+        });
+        if (target) {
+          target.click();
+          return;
+        }
+      }
+
+      if (deepTarget) {
+        const want = `${deepTarget.dataset}|||${deepTarget.model}`;
+        const target = metricRows.find(r => {
+          const rec = JSON.parse(decodeURIComponent(r.dataset.row));
+          return `${rec.dataset}|||${rec.model}` === want;
+        });
+        if (target) {
+          deepLink = null;
+          target.click();
+          document.getElementById("drill-down")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+
+      if (metricRows.length > 0) {
+        if (!deepLink) metricRows[0].click();
+      } else {
+        selectedCell = null;
+        drillImageA.removeAttribute("src");
+        drillImageB.removeAttribute("src");
+        missingNote.textContent = "No rows match the current filters.";
+        selectionLabel.textContent = "No selection.";
+      }
+    }
+
+    function refreshDrill() {
+      if (!selectedCell) return;
+      const parts = parseDataset(selectedCell.dataset);
+      const label = parts.country
+        ? `${parts.crop} (${parts.country}) · ${selectedCell.model}`
+        : `${selectedCell.dataset} · ${selectedCell.model}`;
+      selectionLabel.textContent = label;
+      const images = selectedCell.images || {};
+      missingNote.textContent = "";
+
+      if (activePanel === "maps") {
+        if (HAS_DYNAMIC_MAPS && (MAP_DATA.datasets || {})[selectedCell.dataset]) {
+          showMapMode(true);
+          renderDynamicMaps(selectedCell.dataset, selectedCell.model).then(ok => {
+            if (!ok) {
+              showMapMode(false);
+              missingNote.textContent =
+                "Could not render dynamic maps (missing geometry or preds). "
+                + "Re-run collect to export preds/ and ensure polygons exist.";
+            }
+          }).catch(err => {
+            showMapMode(false);
+            missingNote.textContent = `Map error: ${err}`;
+          });
+          return;
+        }
+
+        showMapMode(false);
+        imgGrid.classList.add("two");
+        drillColB.style.display = "";
+        mapCaptionLeft.style.display = "";
+        mapCaptionRight.style.display = "";
+        mapCaptionLeft.textContent = "Ground truth (mean yield)";
+        mapCaptionRight.textContent = "Model prediction";
+
+        const actual = images["map_actual"] || "";
+        const pred = images["map_pred"] || "";
+        if (!actual && !pred) {
+          drillImageA.removeAttribute("src");
+          drillImageB.removeAttribute("src");
+          missingNote.textContent =
+            "No map images found. Re-run collect with --plot, or ensure preds/ exists for dynamic maps.";
+          return;
+        }
+        if (actual) drillImageA.src = actual; else drillImageA.removeAttribute("src");
+        if (pred) drillImageB.src = pred; else drillImageB.removeAttribute("src");
+        return;
+      }
+
+      showMapMode(false);
+      imgGrid.classList.remove("two");
+      drillColB.style.display = "none";
+      mapCaptionLeft.style.display = "none";
+      mapCaptionRight.style.display = "none";
+      drillImageB.removeAttribute("src");
+
+      const path = images[activePanel] || "";
+      if (!path) {
+        drillImageA.removeAttribute("src");
+        missingNote.textContent = `No image found for panel: ${activePanel}`;
+        return;
+      }
+      drillImageA.src = path;
+    }
+
+    datasetFilter.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    modelFilter.addEventListener("input", () => renderHeatmap({ preserveSelection: true }));
+    groupDatasets.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    colorModeSelect.addEventListener("change", () => {
+      colorMode = colorModeSelect.value;
+      renderHeatmap({ preserveSelection: true });
+    });
+
+    panelButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        panelButtons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activePanel = btn.dataset.panel;
+        refreshDrill();
+      });
+    });
+
+    drillImageA.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load image. Re-run collect with plot enabled to regenerate dashboard assets.";
+    });
+    drillImageB.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load prediction map. Re-run collect with plot enabled.";
+    });
+
+    buildRows();
+    renderHeatmap();
+  </script>

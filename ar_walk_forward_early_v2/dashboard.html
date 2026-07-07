@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CY-Bench Multi-Model Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --card: #fff;
+      --border: #d8dee4;
+      --text: #1f2328;
+      --muted: #656d76;
+      --accent: #0969da;
+      --accent-soft: #ddf4ff;
+      --group-a: #f6f8fa;
+      --group-b: #fff;
+      --good: #1a7f37;
+      --bad: #cf222e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1.25rem;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .page { max-width: 1400px; margin: 0 auto; }
+    h2 { margin: 0 0 1rem; font-size: 1.35rem; font-weight: 600; }
+    h3 { margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+    }
+    .card + .card { margin-top: 1rem; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .table-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      align-items: center;
+      margin: 0.5rem 0 0.75rem;
+    }
+    .table-controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .table-controls select,
+    .table-controls input[type="search"] {
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: inherit;
+      background: #fff;
+    }
+    .table-controls input[type="search"] { min-width: 10rem; }
+    .table-scroll {
+      overflow: auto;
+      max-height: min(70vh, 720px);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.86rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.45rem 0.55rem;
+      text-align: center;
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) { text-align: left; }
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f3f4f6;
+      font-weight: 600;
+    }
+    thead tr:nth-child(2) th { top: 2.1rem; }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    th.sortable:hover { background: #e8eaed; }
+    th .sort-mark {
+      display: inline-block;
+      width: 0.9rem;
+      color: var(--accent);
+      font-size: 0.75rem;
+    }
+    th.group-head {
+      border-bottom: 2px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    th.group-head .group-hint {
+      display: block;
+      font-weight: 400;
+      font-size: 0.65rem;
+      text-transform: none;
+      letter-spacing: 0;
+      margin-top: 0.12rem;
+      line-height: 1.2;
+    }
+    th .metric-sub {
+      font-weight: 500;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    tr.metric-row { cursor: pointer; }
+    tr.metric-row:hover td { filter: brightness(0.97); }
+    tr.metric-row.selected td {
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    tr.group-a td { background: var(--group-a); }
+    tr.group-b td { background: var(--group-b); }
+    td.dataset-cell {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    td.dataset-cell.continued {
+      color: transparent;
+      user-select: none;
+    }
+    td.metric-cell { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.88rem; }
+    td.metric-cell.missing { color: #9a9a9a; }
+    td.metric-cell .metric-std { color: var(--muted); font-size: 0.92em; }
+    .dataset-parts {
+      display: flex;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .badge.country { background: #f0f0f0; color: #444; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0; }
+    .toolbar button {
+      padding: 0.4rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .toolbar button:hover { background: #f6f8fa; }
+    .toolbar button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .img-grid { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
+    .img-grid.two { grid-template-columns: 1fr 1fr; }
+    .map-caption {
+      font-size: 0.82rem;
+      margin-bottom: 0.35rem;
+      text-align: center;
+    }
+    @media (max-width: 900px) {
+      .img-grid.two { grid-template-columns: 1fr; }
+    }
+    img {
+      max-width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      min-height: 120px;
+      background: #fff;
+    }
+    .region-map-wrap { width: 100%; overflow: hidden; min-height: 280px; }
+    .region-map-wrap svg { display: block; width: 100%; height: auto; }
+    .region-map-wrap .region {
+      stroke: #fff;
+      stroke-width: 0.6px;
+      transition: fill 0.12s;
+    }
+    .region-map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin-top: 0.35rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      justify-content: center;
+    }
+    .region-map-gradient {
+      display: inline-block;
+      width: 140px;
+      height: 10px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: linear-gradient(to right, #ffffcc, #fd8d3c, #800026);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h2>CY-Bench multi-model local dashboard</h2>
+    <div class="card">
+      <h3>Model comparison</h3>
+      <div class="muted" id="coverage-info"></div>
+      <div class="table-controls">
+        <label>
+          Dataset
+          <select id="dataset-filter">
+            <option value="">All datasets</option>
+          </select>
+        </label>
+        <label>
+          Model
+          <input type="search" id="model-filter" placeholder="Filter models…" />
+        </label>
+        <label>
+          <input type="checkbox" id="group-datasets" checked />
+          Group by dataset
+        </label>
+        <label>
+          Colors
+          <select id="color-mode">
+            <option value="fixed" selected>Fixed scale (absolute)</option>
+            <option value="column">Relative to filtered rows</option>
+          </select>
+        </label>
+      </div>
+      <div class="muted" style="margin-bottom: 0.5rem;">Click a column header to sort. Lower NRMSE is better; higher R² and r are better. Pattern axes use Pearson r (med/yr, med/reg, or aggregate). Fixed colors: NRMSE 0–0.5, R² 0–1, r −1–1.</div>
+      <div class="table-scroll" id="heatmap-wrap"></div>
+    </div>
+
+    <div class="card" id="drill-down">
+      <h3>Drill-down plots</h3>
+      <div id="selection-label" class="muted">Click a table row to inspect plots.</div>
+      <div class="toolbar">
+        <button data-panel="maps" class="active">Maps</button>
+        <button data-panel="scatter">Scatter</button>
+        <button data-panel="temporal">Temporal</button>
+      </div>
+      <div id="missing-note" class="muted"></div>
+      <div id="map-grid-dynamic" class="img-grid two" style="display:none;">
+        <div>
+          <div id="map-caption-left-dyn" class="map-caption muted">Ground truth (mean yield)</div>
+          <div id="region-map-actual" class="region-map-wrap"></div>
+          <div class="region-map-legend"><span class="region-map-gradient" aria-hidden="true"></span><span id="region-map-legend-actual">—</span></div>
+        </div>
+        <div>
+          <div id="map-caption-right-dyn" class="map-caption muted">Model prediction</div>
+          <div id="region-map-pred" class="region-map-wrap"></div>
+          <div class="region-map-legend"><span class="region-map-gradient" aria-hidden="true"></span><span id="region-map-legend-pred">—</span></div>
+        </div>
+      </div>
+      <div id="img-grid" class="img-grid two">
+        <div>
+          <div id="map-caption-left" class="map-caption muted">Ground truth (mean yield)</div>
+          <img id="drill-image-a" alt="Ground truth map" />
+        </div>
+        <div id="drill-col-b">
+          <div id="map-caption-right" class="map-caption muted">Model prediction</div>
+          <img id="drill-image-b" alt="Model prediction map" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DATA = [{"model": "lpjml_bc", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter.png", "temporal": "assets/maize_AR_temporal.png"}, "view": "region_year", "metric": "r2", "value": -0.9347677512134183, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter.png", "temporal": "assets/maize_AR_temporal.png"}, "view": "region_year", "metric": "nrmse", "value": 0.4243492731254846, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter.png", "temporal": "assets/maize_AR_temporal.png"}, "view": "spatial", "metric": "r", "value": 0.5972984851017547, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter.png", "temporal": "assets/maize_AR_temporal.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7155744962370192, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter.png", "temporal": "assets/maize_AR_temporal.png"}, "view": "temporal", "metric": "r", "value": 0.4309003983850922, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter.png", "temporal": "assets/maize_AR_temporal.png"}, "view": "temporal", "metric": "r_agg", "value": 0.8568828351423188, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter.png", "temporal": "assets/maize_AR_temporal.png"}, "view": "anomaly", "metric": "r", "value": 0.22247211548029497, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter.png", "temporal": "assets/maize_AR_temporal.png"}, "view": "anomaly", "metric": "r2", "value": -3.588105653818732, "value_std": 0.0}, {"model": "xgboost", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter_4ae40613.png", "temporal": "assets/maize_AR_temporal_6f44cdf3.png"}, "view": "region_year", "metric": "r2", "value": 0.021751310273140124, "value_std": 0.0047243259118097585}, {"model": "xgboost", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter_4ae40613.png", "temporal": "assets/maize_AR_temporal_6f44cdf3.png"}, "view": "region_year", "metric": "nrmse", "value": 0.3017398490510481, "value_std": 0.0007280431687058115}, {"model": "xgboost", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter_4ae40613.png", "temporal": "assets/maize_AR_temporal_6f44cdf3.png"}, "view": "spatial", "metric": "r", "value": 0.6728247446699858, "value_std": 0.004485885042971777}, {"model": "xgboost", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter_4ae40613.png", "temporal": "assets/maize_AR_temporal_6f44cdf3.png"}, "view": "spatial", "metric": "r_agg", "value": 0.766015262252759, "value_std": 0.0006994736493034964}, {"model": "xgboost", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter_4ae40613.png", "temporal": "assets/maize_AR_temporal_6f44cdf3.png"}, "view": "temporal", "metric": "r", "value": -0.29556776684312797, "value_std": 0.012729511545186376}, {"model": "xgboost", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter_4ae40613.png", "temporal": "assets/maize_AR_temporal_6f44cdf3.png"}, "view": "temporal", "metric": "r_agg", "value": -0.5072429754742448, "value_std": 0.010270884811835666}, {"model": "xgboost", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter_4ae40613.png", "temporal": "assets/maize_AR_temporal_6f44cdf3.png"}, "view": "anomaly", "metric": "r", "value": -0.07702355828846849, "value_std": 0.002843573468778327}, {"model": "xgboost", "dataset": "maize_AR", "n_regions": 301, "n_years": 5, "n_samples": 1449, "images": {"scatter": "assets/maize_AR_scatter_4ae40613.png", "temporal": "assets/maize_AR_temporal_6f44cdf3.png"}, "view": "anomaly", "metric": "r2", "value": -1.319817632561667, "value_std": 0.011203260139550452}, {"model": "lpjml_bc", "dataset": "wheat_AR", "n_regions": 249, "n_years": 4, "n_samples": 965, "images": {"scatter": "assets/wheat_AR_scatter.png", "temporal": "assets/wheat_AR_temporal.png"}, "view": "region_year", "metric": "r2", "value": -0.7034410365674377, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "wheat_AR", "n_regions": 249, "n_years": 4, "n_samples": 965, "images": {"scatter": "assets/wheat_AR_scatter.png", "temporal": "assets/wheat_AR_temporal.png"}, "view": "region_year", "metric": "nrmse", "value": 0.6038316453851458, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "wheat_AR", "n_regions": 249, "n_years": 4, "n_samples": 965, "images": {"scatter": "assets/wheat_AR_scatter.png", "temporal": "assets/wheat_AR_temporal.png"}, "view": "spatial", "metric": "r", "value": 0.5088874728241194, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "wheat_AR", "n_regions": 249, "n_years": 4, "n_samples": 965, "images": {"scatter": "assets/wheat_AR_scatter.png", "temporal": "assets/wheat_AR_temporal.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7648561560105159, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "wheat_AR", "n_regions": 249, "n_years": 4, "n_samples": 965, "images": {"scatter": "assets/wheat_AR_scatter.png", "temporal": "assets/wheat_AR_temporal.png"}, "view": "temporal", "metric": "r", "value": -0.36968499433891266, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "wheat_AR", "n_regions": 249, "n_years": 4, "n_samples": 965, "images": {"scatter": "assets/wheat_AR_scatter.png", "temporal": "assets/wheat_AR_temporal.png"}, "view": "temporal", "metric": "r_agg", "value": -0.5024736832958441, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "wheat_AR", "n_regions": 249, "n_years": 4, "n_samples": 965, "images": {"scatter": "assets/wheat_AR_scatter.png", "temporal": "assets/wheat_AR_temporal.png"}, "view": "anomaly", "metric": "r", "value": -0.28076402160678227, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "wheat_AR", "n_regions": 249, "n_years": 4, "n_samples": 965, "images": {"scatter": "assets/wheat_AR_scatter.png", "temporal": "assets/wheat_AR_temporal.png"}, "view": "anomaly", "metric": "r2", "value": -4.240892574686039, "value_std": 0.0}, {"model": "xgboost", "dataset": "wheat_AR", "n_regions": 246, "n_years": 5, "n_samples": 960, "images": {"scatter": "assets/wheat_AR_scatter_6a971de7.png", "temporal": "assets/wheat_AR_temporal_16f95bb2.png"}, "view": "region_year", "metric": "r2", "value": 0.5120141254336777, "value_std": 0.011594281777987672}, {"model": "xgboost", "dataset": "wheat_AR", "n_regions": 246, "n_years": 5, "n_samples": 960, "images": {"scatter": "assets/wheat_AR_scatter_6a971de7.png", "temporal": "assets/wheat_AR_temporal_16f95bb2.png"}, "view": "region_year", "metric": "nrmse", "value": 0.3224612674231654, "value_std": 0.003808899988541099}, {"model": "xgboost", "dataset": "wheat_AR", "n_regions": 246, "n_years": 5, "n_samples": 960, "images": {"scatter": "assets/wheat_AR_scatter_6a971de7.png", "temporal": "assets/wheat_AR_temporal_16f95bb2.png"}, "view": "spatial", "metric": "r", "value": 0.8607628610154267, "value_std": 0.02555570880368682}, {"model": "xgboost", "dataset": "wheat_AR", "n_regions": 246, "n_years": 5, "n_samples": 960, "images": {"scatter": "assets/wheat_AR_scatter_6a971de7.png", "temporal": "assets/wheat_AR_temporal_16f95bb2.png"}, "view": "spatial", "metric": "r_agg", "value": 0.9295513760246408, "value_std": 0.0030785876663378836}, {"model": "xgboost", "dataset": "wheat_AR", "n_regions": 246, "n_years": 5, "n_samples": 960, "images": {"scatter": "assets/wheat_AR_scatter_6a971de7.png", "temporal": "assets/wheat_AR_temporal_16f95bb2.png"}, "view": "temporal", "metric": "r", "value": -0.4519743423463655, "value_std": 0.041878272024122996}, {"model": "xgboost", "dataset": "wheat_AR", "n_regions": 246, "n_years": 5, "n_samples": 960, "images": {"scatter": "assets/wheat_AR_scatter_6a971de7.png", "temporal": "assets/wheat_AR_temporal_16f95bb2.png"}, "view": "temporal", "metric": "r_agg", "value": 0.526606143870757, "value_std": 0.06429625438400183}, {"model": "xgboost", "dataset": "wheat_AR", "n_regions": 246, "n_years": 5, "n_samples": 960, "images": {"scatter": "assets/wheat_AR_scatter_6a971de7.png", "temporal": "assets/wheat_AR_temporal_16f95bb2.png"}, "view": "anomaly", "metric": "r", "value": -0.1369190679888656, "value_std": 0.026611731472813246}, {"model": "xgboost", "dataset": "wheat_AR", "n_regions": 246, "n_years": 5, "n_samples": 960, "images": {"scatter": "assets/wheat_AR_scatter_6a971de7.png", "temporal": "assets/wheat_AR_temporal_16f95bb2.png"}, "view": "anomaly", "metric": "r2", "value": -0.49358235464518446, "value_std": 0.035486712999175204}];
+    const MAP_DATA = {"geojson_by_country": {"AR": "assets/regions_AR.geojson"}, "datasets": {"maize_AR": {"country": "AR", "actual": {"AR006007": 6.32, "AR006014": 5.5, "AR006021": 7.47, "AR006042": 6.66, "AR006049": 7.0, "AR006056": 3.5, "AR006063": 7.24, "AR006070": 7.66, "AR006077": 7.77, "AR006084": 5.9, "AR006105": 7.62, "AR006112": 7.57, "AR006119": 7.24, "AR006126": 7.795, "AR006134": 7.34, "AR006140": 7.777, "AR006147": 7.13, "AR006154": 7.44, "AR006161": 7.26, "AR006168": 6.6, "AR006175": 8.26, "AR006182": 3.62, "AR006189": 4.82, "AR006196": 5.04, "AR006203": 6.5, "AR006210": 8.18, "AR006224": 7.37, "AR006231": 7.68, "AR006238": 6.4, "AR006266": 7.81, "AR006277": 8.35, "AR006280": 7.86, "AR006287": 7.08, "AR006294": 7.94, "AR006301": 6.962, "AR006308": 6.38, "AR006315": 8.16, "AR006322": 5.8, "AR006329": 7.52, "AR006336": 6.625, "AR006343": 7.36, "AR006351": 8.5092, "AR006357": 7.94, "AR006364": 7.46, "AR006385": 8.5, "AR006392": 8.07, "AR006399": 6.5, "AR006406": 7.78, "AR006413": 8.28, "AR006441": 7.34, "AR006448": 5.14, "AR006455": 6.918, "AR006462": 8.55, "AR006469": 8.28, "AR006476": 7.58, "AR006483": 7.314, "AR006497": 7.44, "AR006505": 7.3, "AR006511": 7.48, "AR006518": 7.76, "AR006525": 7.42, "AR006532": 5.47, "AR006547": 7.024, "AR006574": 7.234, "AR006581": 5.84, "AR006588": 7.67, "AR006595": 7.44, "AR006602": 8.2, "AR006609": 8.14, "AR006616": 7.2, "AR006623": 8.34, "AR006630": 6.6, "AR006638": 7.46, "AR006651": 4.42, "AR006655": 7.26, "AR006665": 7.726, "AR006672": 6.62, "AR006679": 8.2592, "AR006686": 8.5, "AR006693": 7.022, "AR006700": 4.48, "AR006707": 7.24, "AR006714": 8.4, "AR006721": 7.12, "AR006728": 7.2, "AR006735": 7.732, "AR006742": 5.48, "AR006763": 7.62, "AR006770": 7.679, "AR006778": 7.36, "AR006784": 5.67, "AR006791": 7.16, "AR006798": 7.12, "AR006819": 4.26, "AR006826": 7.92, "AR006833": 5.54, "AR006847": 7.18, "AR006854": 7.35, "AR006875": 8.14, "AR006882": 7.88, "AR010042": 3.1, "AR010056": 5.12, "AR010098": 6.544, "AR014007": 6.0, "AR014014": 7.5, "AR014021": 8.18, "AR014028": 6.7667, "AR014035": 7.36, "AR014042": 7.36, "AR014049": 6.14, "AR014056": 6.68, "AR014063": 9.24, "AR014077": 6.24, "AR014084": 8.22, "AR014098": 5.74, "AR014105": 7.34, "AR014112": 7.12, "AR014119": 7.9, "AR014126": 7.14, "AR014133": 8.6, "AR014140": 7.96, "AR014147": 7.8, "AR014161": 7.56, "AR014168": 7.66, "AR014175": 7.5, "AR014182": 8.56, "AR018007": 5.42, "AR018014": 5.42, "AR018021": 5.42, "AR018028": 5.42, "AR018035": 5.42, "AR018042": 5.42, "AR018049": 5.4202, "AR018070": 5.42, "AR018084": 5.42, "AR018091": 5.42, "AR018105": 5.42, "AR018119": 5.42, "AR018126": 5.42, "AR018140": 5.42, "AR018147": 5.42, "AR018154": 5.42, "AR018161": 5.42, "AR018168": 5.42, "AR018175": 5.42, "AR022007": 4.7, "AR022021": 3.66, "AR022028": 5.1612, "AR022036": 5.043, "AR022039": 5.0822, "AR022043": 4.3894, "AR022049": 5.1212, "AR022063": 4.3, "AR022070": 4.24, "AR022084": 3.06, "AR022091": 4.32, "AR022098": 4.6212, "AR022105": 4.9212, "AR022112": 4.9786, "AR022119": 2.6616, "AR022133": 3.48, "AR022140": 4.6073, "AR022147": 4.2076, "AR022154": 4.18, "AR022168": 3.0002, "AR030008": 4.48, "AR030015": 5.57, "AR030021": 6.07, "AR030028": 5.31, "AR030035": 5.53, "AR030042": 5.15, "AR030049": 4.95, "AR030056": 4.62, "AR030070": 5.59, "AR030077": 4.79, "AR030084": 6.05, "AR030088": 4.29, "AR030091": 4.64, "AR030098": 4.49, "AR030105": 5.3, "AR030113": 4.58, "AR034007": 3.7, "AR034014": 4.449, "AR034021": 4.35, "AR034035": 2.9, "AR034042": 3.3505, "AR034049": 3.689, "AR034056": 4.1, "AR038014": 4.8008, "AR038021": 5.0924, "AR038035": 5.1044, "AR038042": 5.1026, "AR038056": 5.0986, "AR038063": 5.1, "AR038070": 5.1, "AR042007": 5.66, "AR042021": 5.18, "AR042028": 6.0, "AR042035": 6.906, "AR042056": 8.6774, "AR042070": 3.5, "AR042077": 3.3, "AR042105": 8.6084, "AR042119": 8.5158, "AR042126": 7.7168, "AR042133": 8.3162, "AR042140": 3.66, "AR042147": 7.1846, "AR042154": 3.3, "AR054007": 4.2245, "AR054014": 4.16, "AR054021": 4.125, "AR054028": 4.1985, "AR054035": 4.1943, "AR054042": 4.3007, "AR054049": 4.5, "AR054056": 4.36, "AR054063": 4.2592, "AR054070": 4.1202, "AR054077": 4.3478, "AR054084": 4.3522, "AR054091": 4.12, "AR054098": 4.1174, "AR054105": 4.0994, "AR054112": 4.34, "AR054119": 4.34, "AR066007": 6.44, "AR066014": 5.075, "AR066028": 6.6406, "AR066035": 6.64, "AR066042": 6.5598, "AR066049": 6.58, "AR066056": 6.42, "AR066077": 6.5012, "AR066084": 6.48, "AR066098": 6.461, "AR066112": 6.66, "AR066126": 6.44, "AR066133": 6.2, "AR066140": 6.62, "AR066147": 6.7202, "AR074007": 11.72, "AR074021": 4.9, "AR074028": 4.3, "AR074035": 4.64, "AR074042": 4.64, "AR074049": 8.0, "AR074056": 4.8, "AR074063": 4.78, "AR082007": 7.21, "AR082014": 7.65, "AR082021": 6.93, "AR082028": 6.87, "AR082035": 5.43, "AR082042": 9.1112, "AR082049": 3.648, "AR082056": 7.13, "AR082063": 5.54, "AR082070": 6.35, "AR082077": 5.33, "AR082084": 6.47, "AR082091": 5.46, "AR082098": 3.598, "AR082105": 6.16, "AR082112": 5.46, "AR082119": 6.93, "AR082126": 6.47, "AR082133": 4.228, "AR086007": 6.394, "AR086014": 7.204, "AR086028": 6.714, "AR086035": 6.606, "AR086042": 7.11, "AR086049": 6.906, "AR086056": 6.546, "AR086063": 6.746, "AR086070": 6.606, "AR086077": 7.308, "AR086084": 6.806, "AR086091": 7.2, "AR086098": 7.072, "AR086105": 6.806, "AR086112": 6.906, "AR086119": 7.042, "AR086126": 7.0, "AR086133": 6.946, "AR086140": 6.0, "AR086147": 7.08, "AR086154": 6.912, "AR086161": 6.892, "AR086175": 6.752, "AR086182": 6.05, "AR086189": 6.906, "AR090007": 5.58, "AR090014": 5.687, "AR090035": 5.38, "AR090049": 5.66, "AR090056": 5.56, "AR090091": 5.64, "AR090098": 4.5, "AR090112": 6.28}, "models": {"lpjml_bc": {"AR006007": 3.9266, "AR006014": 4.6904, "AR006021": 6.736, "AR006042": 5.478, "AR006049": 5.4742, "AR006056": 4.679, "AR006063": 5.7772, "AR006070": 5.4106, "AR006077": 6.041, "AR006084": 5.553, "AR006105": 6.6762, "AR006112": 7.0144, "AR006119": 5.7932, "AR006126": 5.0792, "AR006134": 5.603, "AR006140": 5.8958, "AR006147": 7.4264, "AR006154": 6.3616, "AR006161": 6.148, "AR006168": 4.8382, "AR006175": 7.861, "AR006182": 3.454, "AR006189": 4.7372, "AR006196": 4.6314, "AR006203": 4.819, "AR006210": 7.2356, "AR006224": 6.1092, "AR006231": 6.8774, "AR006238": 5.625, "AR006266": 5.5122, "AR006277": 7.4908, "AR006280": 5.8864, "AR006287": 6.1914, "AR006294": 7.8436, "AR006301": 6.2854, "AR006308": 4.931, "AR006315": 5.8892, "AR006322": 4.789, "AR006329": 5.7648, "AR006336": 5.2905, "AR006343": 6.2272, "AR006351": 8.1068, "AR006357": 5.669, "AR006364": 5.6892, "AR006385": 7.561, "AR006392": 7.5184, "AR006399": 5.8872, "AR006406": 6.826, "AR006413": 7.3754, "AR006441": 6.031, "AR006448": 4.9392, "AR006455": 6.4548, "AR006462": 8.3312, "AR006469": 7.3056, "AR006476": 5.7824, "AR006483": 6.29, "AR006497": 5.6842, "AR006505": 5.7156, "AR006511": 5.6898, "AR006518": 5.6706, "AR006525": 6.1494, "AR006532": 4.2522, "AR006547": 5.9568, "AR006574": 6.261, "AR006581": 7.242, "AR006588": 7.131, "AR006595": 6.185, "AR006602": 5.5394, "AR006609": 6.8686, "AR006616": 4.83, "AR006623": 7.2604, "AR006630": 4.626, "AR006638": 5.4778, "AR006651": 3.4796, "AR006655": 7.2772, "AR006665": 6.1498, "AR006672": 5.2906, "AR006679": 7.1264, "AR006686": 7.7706, "AR006693": 6.468, "AR006700": 4.0182, "AR006707": 6.7974, "AR006714": 7.3192, "AR006721": 4.9778, "AR006728": 5.5184, "AR006735": 5.9788, "AR006742": 6.5602, "AR006763": 6.0698, "AR006770": 6.3706, "AR006778": 5.774, "AR006784": 4.3072, "AR006791": 5.9476, "AR006798": 6.0088, "AR006819": 3.7724, "AR006826": 6.7366, "AR006833": 6.6826, "AR006847": 5.0496, "AR006854": 6.6474, "AR006875": 5.9896, "AR006882": 5.6348, "AR010042": 4.717, "AR010056": 4.2776, "AR010098": 4.9588, "AR014007": 4.4316, "AR014014": 5.8002, "AR014021": 5.7682, "AR014028": 2.0563, "AR014035": 6.3404, "AR014042": 6.4156, "AR014049": 5.3478, "AR014056": 4.992, "AR014063": 8.8018, "AR014077": 4.6642, "AR014084": 6.8104, "AR014098": 4.921, "AR014105": 5.9638, "AR014112": 5.3518, "AR014119": 5.8524, "AR014126": 3.4576, "AR014133": 4.1514, "AR014140": 6.0834, "AR014147": 5.268, "AR014161": 5.9322, "AR014168": 6.154, "AR014175": 5.1894, "AR014182": 8.2424, "AR018007": 0.8106, "AR018014": 0.9474, "AR018021": 0.705, "AR018028": 0.705, "AR018035": 2.2046, "AR018042": 0.7482, "AR018049": 2.1762, "AR018070": 2.75, "AR018084": 1.7708, "AR018091": -0.2524, "AR018105": 2.1752, "AR018119": 1.6288, "AR018126": 0.705, "AR018140": 0.705, "AR018147": 1.9956, "AR018154": 0.705, "AR018161": 0.705, "AR018168": 0.722, "AR018175": 2.9462, "AR022007": 2.7684, "AR022021": 2.781, "AR022028": 3.417, "AR022036": 3.8916, "AR022039": 3.9236, "AR022043": 3.7578, "AR022049": 3.6296, "AR022063": 2.367, "AR022070": 2.6694, "AR022084": 2.8938, "AR022091": 2.57, "AR022098": 2.7782, "AR022105": 3.5282, "AR022112": 3.3604, "AR022119": 2.5182, "AR022133": 2.7798, "AR022140": 1.2525, "AR022147": 3.1434, "AR022154": 2.9246, "AR022168": 2.7968, "AR030008": 2.369, "AR030015": 4.1894, "AR030021": 6.5994, "AR030028": 4.1646, "AR030035": 3.427, "AR030042": 4.7658, "AR030049": 3.5934, "AR030056": 4.5304, "AR030070": 5.6902, "AR030077": 4.039, "AR030084": 6.6904, "AR030088": 2.9838, "AR030091": 2.7362, "AR030098": 3.9796, "AR030105": 4.3874, "AR030113": 2.404, "AR034007": 0.809, "AR034014": 0.8665, "AR034021": 0.8395, "AR034035": 2.9175, "AR034042": 0.8395, "AR034049": 0.911, "AR034056": 2.7405, "AR038014": 3.7882, "AR038021": 4.184, "AR038035": 4.288, "AR038042": 4.2112, "AR038056": 4.16, "AR038063": 2.009, "AR038070": 2.9424, "AR042007": 3.5388, "AR042021": 3.4922, "AR042028": 4.062, "AR042035": 3.7116, "AR042056": 5.968, "AR042070": 3.0154, "AR042077": 2.6246, "AR042105": 5.8714, "AR042119": 5.3488, "AR042126": 3.47, "AR042133": 3.9412, "AR042140": 2.9774, "AR042147": 3.5446, "AR042154": 2.5666, "AR054007": 0.3787, "AR054014": 1.9856, "AR054021": 1.1227, "AR054028": 0.7167, "AR054035": 0.8317, "AR054042": 1.4068, "AR054049": 2.2018, "AR054056": 2.4622, "AR054063": 1.992, "AR054070": 1.184, "AR054077": 1.2767, "AR054084": 1.2258, "AR054091": 1.557, "AR054098": 1.4294, "AR054105": 1.1892, "AR054112": 2.0446, "AR054119": 2.3134, "AR066007": 3.9842, "AR066014": 0.6535, "AR066028": 2.744, "AR066035": 2.3838, "AR066042": 2.4452, "AR066049": 1.569, "AR066056": 1.9694, "AR066077": 3.104, "AR066084": 3.4934, "AR066098": 1.215, "AR066112": 2.7598, "AR066126": 3.3094, "AR066133": 2.9428, "AR066140": 2.5284, "AR066147": 5.2128, "AR074007": 9.64, "AR074021": 5.1006, "AR074028": 4.2978, "AR074035": 4.4868, "AR074042": 3.6826, "AR074049": 4.945, "AR074056": 4.4974, "AR074063": 3.4022, "AR082007": 7.7016, "AR082014": 6.8202, "AR082021": 6.0762, "AR082028": 6.7832, "AR082035": 5.2822, "AR082042": 8.8038, "AR082049": 1.9198, "AR082056": 7.4242, "AR082063": 5.5702, "AR082070": 6.1968, "AR082077": 3.4432, "AR082084": 6.6424, "AR082091": 4.8902, "AR082098": 3.275, "AR082105": 6.8884, "AR082112": 5.486, "AR082119": 6.2544, "AR082126": 7.5196, "AR082133": 4.2552, "AR086007": 3.8384, "AR086014": 3.8728, "AR086028": 4.582, "AR086035": 4.5746, "AR086042": 4.6764, "AR086049": 5.968, "AR086056": 3.4956, "AR086063": 3.2362, "AR086070": 5.2396, "AR086077": 3.679, "AR086084": 3.3698, "AR086091": 4.5756, "AR086098": 4.4034, "AR086105": 4.8766, "AR086112": 5.1094, "AR086119": 4.5088, "AR086126": 2.962, "AR086133": 3.715, "AR086140": 2.634, "AR086147": 4.0818, "AR086154": 4.901, "AR086161": 5.9982, "AR086175": 5.477, "AR086182": 5.7702, "AR086189": 6.251, "AR090007": 5.7814, "AR090014": 5.9794, "AR090035": 5.5346, "AR090049": 6.1246, "AR090056": 5.728, "AR090091": 5.8066, "AR090098": 4.6955, "AR090112": 5.9652}, "xgboost": {"AR006007": 4.3498, "AR006014": 5.6604, "AR006021": 7.7884, "AR006042": 6.434, "AR006049": 6.1152, "AR006056": 4.0115, "AR006063": 6.2544, "AR006070": 7.685, "AR006077": 7.9406, "AR006084": 6.0402, "AR006105": 6.9888, "AR006112": 7.825, "AR006119": 6.9766, "AR006126": 7.4768, "AR006134": 7.2748, "AR006140": 7.801, "AR006147": 7.4484, "AR006154": 7.3944, "AR006161": 7.75, "AR006168": 6.3606, "AR006175": 8.3002, "AR006182": 4.2258, "AR006189": 4.801, "AR006196": 4.6344, "AR006203": 4.9994, "AR006210": 8.089, "AR006224": 7.7612, "AR006231": 6.7494, "AR006238": 5.908, "AR006266": 7.58, "AR006277": 7.6832, "AR006280": 6.374, "AR006287": 7.4646, "AR006294": 8.2752, "AR006301": 7.324, "AR006308": 6.3684, "AR006315": 6.2366, "AR006322": 5.8554, "AR006329": 7.4444, "AR006336": 5.7115, "AR006343": 7.0826, "AR006351": 8.1026, "AR006357": 6.328, "AR006364": 7.4086, "AR006385": 7.8464, "AR006392": 7.5548, "AR006399": 5.4644, "AR006406": 7.0374, "AR006413": 8.1014, "AR006441": 6.7964, "AR006448": 5.838, "AR006455": 7.3266, "AR006462": 8.105, "AR006469": 7.788, "AR006476": 6.4552, "AR006483": 7.6466, "AR006497": 7.4506, "AR006505": 6.4154, "AR006511": 6.3428, "AR006518": 6.2986, "AR006525": 7.4214, "AR006532": 7.3844, "AR006547": 7.28, "AR006574": 7.6826, "AR006581": 6.7472, "AR006588": 7.6212, "AR006595": 6.263, "AR006602": 5.3848, "AR006609": 7.4146, "AR006616": 5.2722, "AR006623": 8.2878, "AR006630": 6.7056, "AR006638": 7.8006, "AR006651": 3.8288, "AR006655": 6.6624, "AR006665": 7.731, "AR006672": 6.4696, "AR006679": 7.0722, "AR006686": 8.281, "AR006693": 7.5718, "AR006700": 4.2046, "AR006707": 7.7146, "AR006714": 8.2208, "AR006721": 4.9436, "AR006728": 7.5456, "AR006735": 7.6572, "AR006742": 6.5902, "AR006763": 7.7658, "AR006770": 7.6748, "AR006778": 7.1778, "AR006784": 7.5618, "AR006791": 6.0812, "AR006798": 6.7202, "AR006819": 3.9234, "AR006826": 6.906, "AR006833": 6.382, "AR006847": 5.231, "AR006854": 7.7522, "AR006875": 5.9842, "AR006882": 7.4812, "AR010042": 5.235, "AR010056": 4.9974, "AR010098": 5.3254, "AR014007": 6.113, "AR014014": 6.6524, "AR014021": 6.595, "AR014028": 6.708, "AR014035": 5.9208, "AR014042": 7.1726, "AR014049": 6.083, "AR014056": 6.236, "AR014063": 8.1982, "AR014077": 5.167, "AR014084": 6.7518, "AR014098": 6.0664, "AR014105": 6.7578, "AR014112": 6.192, "AR014119": 6.986, "AR014126": 5.5482, "AR014133": 6.6598, "AR014140": 6.9986, "AR014147": 6.6016, "AR014161": 7.1262, "AR014168": 6.5528, "AR014175": 6.4806, "AR014182": 8.058, "AR018007": 3.1722, "AR018014": 2.7768, "AR018021": 2.8928, "AR018028": 2.8146, "AR018035": 3.022, "AR018042": 2.837, "AR018049": 4.2724, "AR018070": 3.0504, "AR018084": 2.8932, "AR018091": 2.9234, "AR018105": 3.3374, "AR018119": 3.062, "AR018126": 3.0568, "AR018140": 2.6086, "AR018147": 2.9052, "AR018154": 2.7882, "AR018161": 3.1092, "AR018168": 3.0892, "AR018175": 3.3178, "AR022007": 4.4728, "AR022021": 3.8218, "AR022028": 4.4232, "AR022036": 4.4608, "AR022039": 4.4086, "AR022043": 4.4084, "AR022049": 4.3586, "AR022063": 4.051, "AR022070": 3.983, "AR022084": 3.8348, "AR022091": 3.9668, "AR022098": 4.1284, "AR022105": 4.4248, "AR022112": 3.8766, "AR022119": 3.7074, "AR022133": 3.767, "AR022140": 3.7018, "AR022147": 3.7406, "AR022154": 3.8202, "AR022168": 3.7038, "AR030008": 5.7306, "AR030015": 5.6578, "AR030021": 6.7612, "AR030028": 5.63, "AR030035": 5.8452, "AR030042": 5.5662, "AR030049": 6.7064, "AR030056": 6.156, "AR030070": 6.1192, "AR030077": 6.3536, "AR030084": 6.527, "AR030088": 5.6822, "AR030091": 6.0304, "AR030098": 5.7558, "AR030105": 6.5348, "AR030113": 5.8994, "AR034007": 4.815, "AR034014": 3.199, "AR034021": 3.2085, "AR034035": 3.8705, "AR034042": 3.803, "AR034049": 2.7, "AR034056": 3.8465, "AR038014": 4.5264, "AR038021": 4.4604, "AR038035": 4.734, "AR038042": 4.621, "AR038056": 4.6632, "AR038063": 4.5364, "AR038070": 4.569, "AR042007": 4.0882, "AR042021": 4.0376, "AR042028": 4.7962, "AR042035": 4.4306, "AR042056": 6.394, "AR042070": 3.3936, "AR042077": 3.2708, "AR042105": 6.4572, "AR042119": 5.7798, "AR042126": 4.4282, "AR042133": 4.9356, "AR042140": 3.618, "AR042147": 4.6212, "AR042154": 3.336, "AR054007": 2.3493, "AR054014": 2.4264, "AR054021": 2.2618, "AR054028": 2.4032, "AR054035": 2.4655, "AR054042": 2.8842, "AR054049": 2.994, "AR054056": 2.6492, "AR054063": 2.9094, "AR054070": 2.3842, "AR054077": 2.4718, "AR054084": 2.7138, "AR054091": 2.4142, "AR054098": 2.644, "AR054105": 2.4076, "AR054112": 2.8028, "AR054119": 2.557, "AR066007": 5.2368, "AR066014": 4.5297, "AR066028": 4.8896, "AR066035": 4.8298, "AR066042": 4.8712, "AR066049": 4.6602, "AR066056": 5.0086, "AR066077": 4.6274, "AR066084": 5.0938, "AR066098": 4.8868, "AR066112": 5.306, "AR066126": 4.82, "AR066133": 5.2325, "AR066140": 5.3044, "AR066147": 4.7712, "AR074007": 9.3192, "AR074021": 5.3008, "AR074028": 5.0526, "AR074035": 5.5908, "AR074042": 4.4688, "AR074049": 6.4362, "AR074056": 5.5462, "AR074063": 4.882, "AR082007": 8.1158, "AR082014": 8.3502, "AR082021": 6.9628, "AR082028": 8.2242, "AR082035": 6.0398, "AR082042": 8.2702, "AR082049": 3.6548, "AR082056": 7.6522, "AR082063": 6.2892, "AR082070": 6.7122, "AR082077": 5.052, "AR082084": 7.9956, "AR082091": 5.9208, "AR082098": 3.6044, "AR082105": 7.1138, "AR082112": 5.9366, "AR082119": 7.8328, "AR082126": 7.348, "AR082133": 4.2316, "AR086007": 5.5478, "AR086014": 5.2546, "AR086028": 5.4456, "AR086035": 5.6426, "AR086042": 5.533, "AR086049": 5.4386, "AR086056": 4.9396, "AR086063": 5.166, "AR086070": 5.341, "AR086077": 5.3804, "AR086084": 5.0952, "AR086091": 5.7342, "AR086098": 5.171, "AR086105": 5.3108, "AR086112": 5.7128, "AR086119": 5.2652, "AR086126": 6.309, "AR086133": 5.8248, "AR086140": 6.0795, "AR086147": 5.2886, "AR086154": 5.6534, "AR086161": 5.515, "AR086175": 5.4194, "AR086182": 5.3996, "AR086189": 5.435, "AR090007": 5.6046, "AR090014": 5.5068, "AR090035": 5.1216, "AR090049": 5.624, "AR090056": 5.458, "AR090091": 5.3844, "AR090098": 5.698, "AR090112": 5.8518}}, "n_regions": 301}, "wheat_AR": {"country": "AR", "actual": {"AR006007": 2.7598, "AR006014": 3.7908, "AR006021": 3.74, "AR006042": 3.7818, "AR006049": 3.9822, "AR006056": 1.528, "AR006063": 4.3966, "AR006070": 3.8396, "AR006077": 3.88, "AR006084": 3.7294, "AR006105": 3.2228, "AR006112": 3.7198, "AR006119": 3.46, "AR006126": 3.86, "AR006134": 3.54, "AR006140": 3.94, "AR006147": 3.4402, "AR006154": 3.048, "AR006161": 3.44, "AR006168": 4.18, "AR006175": 4.12, "AR006182": 1.9816, "AR006189": 3.0862, "AR006196": 3.3858, "AR006203": 2.2824, "AR006210": 3.62, "AR006224": 3.8398, "AR006231": 3.18, "AR006238": 3.3333, "AR006266": 3.8, "AR006277": 2.91, "AR006280": 4.6372, "AR006287": 3.18, "AR006294": 3.72, "AR006301": 3.576, "AR006308": 4.05, "AR006315": 4.98, "AR006322": 2.173, "AR006329": 3.56, "AR006336": 3.5, "AR006343": 3.76, "AR006351": 3.05, "AR006357": 4.6194, "AR006364": 3.58, "AR006385": 3.03, "AR006392": 2.8, "AR006399": 2.7394, "AR006406": 3.32, "AR006413": 3.5606, "AR006441": 3.62, "AR006448": 3.5458, "AR006455": 3.5156, "AR006462": 2.97, "AR006469": 2.95, "AR006476": 4.2794, "AR006483": 3.5042, "AR006497": 3.6, "AR006505": 3.58, "AR006511": 4.72, "AR006518": 4.86, "AR006525": 3.58, "AR006532": 3.74, "AR006547": 3.517, "AR006574": 3.6144, "AR006581": 3.8472, "AR006588": 3.7194, "AR006595": 3.2318, "AR006602": 1.494, "AR006609": 3.5406, "AR006616": 2.9184, "AR006623": 4.16, "AR006630": 4.1, "AR006638": 3.62, "AR006651": 2.0168, "AR006655": 3.46, "AR006665": 3.88, "AR006672": 3.8628, "AR006679": 3.201, "AR006686": 3.76, "AR006693": 3.5308, "AR006700": 2.0894, "AR006707": 3.6874, "AR006714": 4.1998, "AR006721": 2.917, "AR006728": 3.38, "AR006735": 3.88, "AR006742": 3.7336, "AR006763": 3.8, "AR006770": 3.84, "AR006778": 3.58, "AR006784": 3.84, "AR006791": 4.2224, "AR006798": 3.18, "AR006812": 3.3333, "AR006819": 1.824, "AR006826": 3.1606, "AR006833": 3.7188, "AR006847": 2.8982, "AR006854": 3.7426, "AR006875": 1.4632, "AR006882": 3.84, "AR010056": 0.76, "AR010098": 1.16, "AR014007": 1.77, "AR014014": 1.66, "AR014021": 2.1522, "AR014028": 1.4, "AR014035": 2.2022, "AR014042": 2.1396, "AR014049": 2.18, "AR014056": 2.17, "AR014063": 2.99, "AR014084": 2.4108, "AR014098": 1.85, "AR014105": 2.2544, "AR014112": 1.74, "AR014119": 1.9996, "AR014133": 3.33, "AR014140": 2.46, "AR014147": 1.64, "AR014161": 2.3, "AR014168": 1.98, "AR014175": 1.9136, "AR014182": 2.7498, "AR018035": 2.56, "AR018105": 2.56, "AR018175": 2.6, "AR022007": 1.17, "AR022021": 1.13, "AR022028": 1.12, "AR022036": 1.2, "AR022039": 1.16, "AR022043": 0.92, "AR022049": 1.18, "AR022063": 1.0, "AR022070": 1.11, "AR022091": 1.15, "AR022098": 1.02, "AR022105": 1.14, "AR022112": 1.32, "AR022133": 1.1, "AR022140": 0.9, "AR022147": 0.8796, "AR022154": 2.2, "AR030008": 2.8, "AR030015": 2.94, "AR030021": 2.96, "AR030028": 2.86, "AR030035": 2.86, "AR030042": 2.8, "AR030049": 3.38, "AR030056": 3.32, "AR030070": 2.88, "AR030077": 3.06, "AR030084": 2.92, "AR030088": 2.82, "AR030091": 3.04, "AR030098": 3.12, "AR030105": 3.16, "AR030113": 2.98, "AR034014": 1.0, "AR034035": 1.0, "AR034056": 1.0, "AR038014": 1.8404, "AR038021": 2.289, "AR038035": 1.844, "AR038042": 1.84, "AR038056": 1.84, "AR038063": 1.8402, "AR038070": 1.84, "AR042007": 2.19, "AR042021": 1.97, "AR042028": 2.07, "AR042035": 1.98, "AR042056": 2.58, "AR042070": 1.89, "AR042077": 1.77, "AR042105": 2.5, "AR042119": 2.1, "AR042126": 1.88, "AR042133": 2.08, "AR042140": 1.75, "AR042147": 1.86, "AR042154": 1.77, "AR066007": 1.4912, "AR066028": 1.34, "AR066035": 1.36, "AR066042": 1.36, "AR066049": 1.1518, "AR066077": 0.98, "AR066084": 0.84, "AR066091": 0.901, "AR066098": 1.1576, "AR066112": 1.14, "AR066126": 0.78, "AR066133": 0.85, "AR066140": 1.0012, "AR066147": 1.4402, "AR074007": 3.608, "AR074021": 1.8858, "AR074028": 1.58, "AR074035": 1.38, "AR074042": 1.4, "AR074049": 2.947, "AR074056": 1.64, "AR074063": 1.1, "AR082007": 3.04, "AR082014": 3.29, "AR082021": 3.02, "AR082028": 3.21, "AR082035": 2.55, "AR082042": 3.32, "AR082049": 1.86, "AR082056": 3.08, "AR082063": 2.8998, "AR082070": 2.82, "AR082077": 1.82, "AR082084": 3.15, "AR082091": 2.28, "AR082098": 2.18, "AR082105": 2.82, "AR082112": 3.0398, "AR082119": 3.27, "AR082126": 2.84, "AR082133": 2.32, "AR086007": 1.38, "AR086014": 1.34, "AR086035": 2.22, "AR086042": 1.68, "AR086049": 2.18, "AR086056": 1.24, "AR086063": 1.3, "AR086070": 2.0, "AR086077": 1.68, "AR086084": 1.44, "AR086091": 1.88, "AR086098": 1.4, "AR086112": 1.58, "AR086119": 1.34, "AR086133": 1.8192, "AR086147": 1.8528, "AR086154": 1.54, "AR086161": 2.152, "AR086175": 1.875, "AR086189": 2.15, "AR090007": 0.9394, "AR090014": 1.0352, "AR090035": 0.8396, "AR090042": 1.1004, "AR090049": 0.9596, "AR090056": 0.8806, "AR090091": 1.0196, "AR090105": 1.04}, "models": {"lpjml_bc": {"AR006007": 1.881, "AR006014": 2.3632, "AR006021": 2.7728, "AR006042": 2.6528, "AR006049": 3.2423, "AR006056": 1.1452, "AR006063": 2.5152, "AR006070": 2.043, "AR006077": 2.198, "AR006084": 2.9825, "AR006105": 2.8513, "AR006112": 2.6677, "AR006119": 2.5297, "AR006126": 2.2012, "AR006134": 2.9432, "AR006140": 2.7428, "AR006147": 2.4108, "AR006154": 2.104, "AR006161": 2.8505, "AR006168": 3.2732, "AR006175": 2.4263, "AR006182": 1.3495, "AR006189": 1.803, "AR006196": 1.7617, "AR006203": 2.248, "AR006210": 2.8377, "AR006224": 2.6505, "AR006231": 2.8588, "AR006238": 3.413, "AR006266": 2.75, "AR006277": 2.3385, "AR006280": 2.544, "AR006287": 2.602, "AR006294": 2.3445, "AR006301": 3.1145, "AR006308": 2.9503, "AR006315": 3.4623, "AR006322": 2.0393, "AR006329": 2.7893, "AR006336": 3.181, "AR006343": 2.913, "AR006351": 2.8042, "AR006357": 2.9035, "AR006364": 2.676, "AR006385": 2.9155, "AR006392": 2.561, "AR006399": 2.14, "AR006406": 2.9718, "AR006413": 2.5438, "AR006441": 2.644, "AR006448": 2.1093, "AR006455": 2.8965, "AR006462": 2.8955, "AR006469": 2.9478, "AR006476": 2.2662, "AR006483": 2.031, "AR006497": 2.6522, "AR006505": 2.4175, "AR006511": 3.3952, "AR006518": 2.812, "AR006525": 2.9725, "AR006532": 2.0787, "AR006547": 3.0475, "AR006574": 2.4813, "AR006581": 2.5557, "AR006588": 2.5452, "AR006595": 2.7817, "AR006602": 1.1147, "AR006609": 2.2963, "AR006616": 2.0777, "AR006623": 2.1477, "AR006630": 3.6093, "AR006638": 2.4605, "AR006651": 1.5475, "AR006655": 2.6727, "AR006665": 1.8958, "AR006672": 2.8833, "AR006679": 2.0895, "AR006686": 2.7855, "AR006693": 2.4808, "AR006700": 1.678, "AR006707": 2.7218, "AR006714": 2.7732, "AR006721": 2.1242, "AR006728": 2.833, "AR006735": 2.7765, "AR006742": 2.2475, "AR006763": 2.785, "AR006770": 2.1365, "AR006778": 2.2873, "AR006784": 1.9285, "AR006791": 3.244, "AR006798": 2.7593, "AR006812": 1.062, "AR006819": 1.4758, "AR006826": 2.2607, "AR006833": 2.5803, "AR006847": 2.0375, "AR006854": 2.2645, "AR006875": 1.2208, "AR006882": 2.3, "AR010056": 1.0005, "AR010098": 1.212, "AR014007": 1.0753, "AR014014": 1.069, "AR014021": 0.9447, "AR014028": 0.3165, "AR014035": 1.6585, "AR014042": 1.3325, "AR014049": 0.4888, "AR014056": 1.478, "AR014063": 1.9775, "AR014084": 2.0025, "AR014098": 1.3785, "AR014105": 1.6082, "AR014112": 1.5302, "AR014119": 1.2372, "AR014133": 1.5882, "AR014140": 1.4383, "AR014147": 0.7465, "AR014161": 1.191, "AR014168": 1.16, "AR014175": 1.3288, "AR014182": 1.8878, "AR018035": 1.331, "AR018105": 0.3113, "AR018175": 1.1725, "AR022007": 1.2252, "AR022021": 1.338, "AR022028": 1.423, "AR022036": 1.865, "AR022039": 1.7663, "AR022043": 1.7185, "AR022049": 1.63, "AR022063": 0.3113, "AR022070": 1.2792, "AR022091": 0.7165, "AR022098": 1.31, "AR022105": 1.4235, "AR022112": 1.4912, "AR022133": 1.4163, "AR022140": 0.31, "AR022147": 1.3218, "AR022154": 0.281, "AR030008": 1.8295, "AR030015": 1.6402, "AR030021": 3.1347, "AR030028": 1.56, "AR030035": 1.7343, "AR030042": 1.6118, "AR030049": 1.3395, "AR030056": 1.8755, "AR030070": 1.5285, "AR030077": 2.2873, "AR030084": 2.7975, "AR030088": 1.8213, "AR030091": 1.2067, "AR030098": 1.8602, "AR030105": 2.636, "AR030113": 1.497, "AR038014": 0.6112, "AR038021": 0.31, "AR038035": 0.3047, "AR038042": 0.3113, "AR038056": 0.3113, "AR038063": 0.3113, "AR038070": 0.3113, "AR042007": 1.6052, "AR042021": 1.5457, "AR042028": 1.7192, "AR042035": 1.3815, "AR042056": 1.4333, "AR042070": 1.544, "AR042077": 1.4392, "AR042105": 1.5467, "AR042119": 1.6727, "AR042126": 1.16, "AR042133": 1.063, "AR042140": 1.3707, "AR042147": 1.1775, "AR042154": 1.484, "AR066007": 1.0177, "AR066028": 1.8168, "AR066035": 1.3393, "AR066042": 0.9407, "AR066049": 1.399, "AR066077": 1.7463, "AR066084": 1.007, "AR066098": 1.2067, "AR066112": 0.759, "AR066126": 0.42, "AR066133": 0.331, "AR066140": 0.5375, "AR066147": 0.3113, "AR074007": 3.0873, "AR074021": 1.0565, "AR074028": 1.5227, "AR074035": 1.2277, "AR074042": 1.5602, "AR074049": 2.3982, "AR074056": 1.3727, "AR074063": 2.488, "AR082007": 1.818, "AR082014": 1.5615, "AR082021": 2.0228, "AR082028": 1.5833, "AR082035": 0.8917, "AR082042": 2.56, "AR082049": 0.6913, "AR082056": 1.909, "AR082063": 2.0677, "AR082070": 2.228, "AR082077": 1.4218, "AR082084": 0.9475, "AR082091": 2.029, "AR082098": 0.7665, "AR082105": 2.3912, "AR082112": 1.7685, "AR082119": 1.531, "AR082126": 2.0305, "AR082133": 0.8195, "AR086007": 1.4615, "AR086014": 0.5443, "AR086035": 2.0625, "AR086042": 0.932, "AR086049": 0.3113, "AR086056": 0.674, "AR086063": 0.781, "AR086070": 1.2495, "AR086077": 0.7987, "AR086084": 1.1772, "AR086091": 1.206, "AR086098": 1.1495, "AR086112": 0.984, "AR086119": 1.4365, "AR086133": 0.817, "AR086147": 0.9828, "AR086154": 1.6532, "AR086161": 2.1408, "AR086175": 0.424, "AR086189": 0.3113, "AR090007": 0.987, "AR090014": 1.0092, "AR090035": 0.9675, "AR090042": 0.824, "AR090049": 0.792, "AR090056": 0.9985, "AR090091": 1.0037, "AR090105": 1.2332}, "xgboost": {"AR006007": 2.4385, "AR006014": 3.074, "AR006021": 3.652, "AR006042": 3.633, "AR006049": 3.7637, "AR006056": 2.102, "AR006063": 3.716, "AR006070": 3.5423, "AR006077": 3.3992, "AR006084": 3.597, "AR006105": 3.3587, "AR006112": 3.6618, "AR006119": 3.6073, "AR006126": 3.627, "AR006134": 3.606, "AR006140": 3.5128, "AR006147": 3.5225, "AR006154": 3.355, "AR006161": 3.5713, "AR006168": 3.5038, "AR006175": 3.4123, "AR006182": 2.1462, "AR006189": 2.742, "AR006196": 2.836, "AR006203": 2.872, "AR006210": 3.4553, "AR006224": 3.7233, "AR006231": 3.33, "AR006238": 3.5485, "AR006266": 3.609, "AR006277": 3.3545, "AR006280": 3.8598, "AR006287": 3.5615, "AR006294": 3.5928, "AR006301": 3.6747, "AR006308": 3.7517, "AR006315": 3.9215, "AR006322": 2.901, "AR006329": 3.6125, "AR006336": 3.708, "AR006343": 3.563, "AR006351": 3.419, "AR006357": 3.8708, "AR006364": 3.6073, "AR006385": 3.599, "AR006392": 3.3495, "AR006399": 2.742, "AR006406": 3.3237, "AR006413": 3.584, "AR006441": 3.4895, "AR006448": 3.2167, "AR006455": 3.6155, "AR006462": 3.5635, "AR006469": 3.5515, "AR006476": 3.9025, "AR006483": 3.657, "AR006497": 3.6295, "AR006505": 3.4337, "AR006511": 3.8992, "AR006518": 3.7435, "AR006525": 3.5867, "AR006532": 3.5602, "AR006547": 3.5605, "AR006574": 3.6208, "AR006581": 3.8258, "AR006588": 3.6305, "AR006595": 3.4198, "AR006602": 1.5362, "AR006609": 3.3133, "AR006616": 2.3945, "AR006623": 3.3655, "AR006630": 3.6247, "AR006638": 3.5408, "AR006651": 2.3962, "AR006655": 3.3312, "AR006665": 3.2995, "AR006672": 3.5387, "AR006679": 3.0938, "AR006686": 3.4705, "AR006693": 3.6455, "AR006700": 2.5565, "AR006707": 3.6963, "AR006714": 3.38, "AR006721": 2.6122, "AR006728": 3.6855, "AR006735": 3.5867, "AR006742": 3.54, "AR006763": 3.256, "AR006770": 3.4007, "AR006778": 3.5163, "AR006784": 3.5685, "AR006791": 3.8427, "AR006798": 3.4708, "AR006812": 3.402, "AR006819": 2.342, "AR006826": 3.32, "AR006833": 3.3483, "AR006847": 2.627, "AR006854": 3.7392, "AR006875": 1.824, "AR006882": 3.526, "AR010056": 1.4625, "AR010098": 1.5055, "AR014007": 2.1587, "AR014014": 1.9628, "AR014021": 2.0935, "AR014028": 2.017, "AR014035": 2.6292, "AR014042": 2.3897, "AR014049": 1.905, "AR014056": 2.3622, "AR014063": 2.956, "AR014084": 2.92, "AR014098": 2.1787, "AR014105": 2.054, "AR014112": 2.0075, "AR014119": 2.2365, "AR014133": 3.0472, "AR014140": 2.0445, "AR014147": 1.9338, "AR014161": 2.2468, "AR014168": 2.088, "AR014175": 1.99, "AR014182": 2.75, "AR018035": 1.9058, "AR018105": 1.9585, "AR018175": 1.9777, "AR022007": 1.333, "AR022021": 1.3022, "AR022028": 1.33, "AR022036": 1.3615, "AR022039": 1.3995, "AR022043": 1.3518, "AR022049": 1.3428, "AR022063": 1.3367, "AR022070": 1.326, "AR022091": 1.3528, "AR022098": 1.3785, "AR022105": 1.389, "AR022112": 1.3658, "AR022133": 1.3075, "AR022140": 1.337, "AR022147": 1.335, "AR022154": 1.363, "AR030008": 2.5012, "AR030015": 2.4613, "AR030021": 2.6567, "AR030028": 2.4047, "AR030035": 2.5225, "AR030042": 2.3842, "AR030049": 2.87, "AR030056": 2.758, "AR030070": 2.5877, "AR030077": 2.7445, "AR030084": 2.6372, "AR030088": 2.501, "AR030091": 2.744, "AR030098": 2.6037, "AR030105": 2.762, "AR030113": 2.5242, "AR038014": 2.116, "AR038021": 1.801, "AR038035": 2.0128, "AR038063": 1.8392, "AR038070": 1.6587, "AR042007": 2.0655, "AR042021": 2.0253, "AR042028": 2.2485, "AR042035": 2.2735, "AR042056": 2.8025, "AR042070": 1.9802, "AR042077": 1.7873, "AR042105": 2.533, "AR042119": 2.3638, "AR042126": 2.104, "AR042133": 2.2633, "AR042140": 1.875, "AR042147": 2.2435, "AR042154": 1.7555, "AR066007": 1.3865, "AR066028": 1.8763, "AR066035": 1.8893, "AR066042": 1.9125, "AR066049": 1.648, "AR066084": 1.3255, "AR066098": 1.7755, "AR066112": 1.3353, "AR066126": 1.3565, "AR066133": 1.666, "AR066140": 1.2772, "AR066147": 1.9236, "AR074007": 3.0177, "AR074021": 2.061, "AR074028": 2.0294, "AR074035": 1.9407, "AR074042": 2.0867, "AR074049": 2.8596, "AR074056": 1.9347, "AR074063": 2.035, "AR082007": 2.7748, "AR082014": 3.0655, "AR082021": 2.2117, "AR082028": 3.1168, "AR082035": 2.382, "AR082042": 3.355, "AR082049": 1.8302, "AR082056": 2.8847, "AR082063": 2.4242, "AR082070": 2.4678, "AR082077": 1.725, "AR082084": 3.0897, "AR082091": 1.9895, "AR082098": 1.9455, "AR082105": 2.6528, "AR082112": 2.4015, "AR082119": 3.0697, "AR082126": 2.546, "AR082133": 1.9788, "AR086007": 1.5525, "AR086014": 1.452, "AR086035": 2.0583, "AR086042": 1.5617, "AR086049": 2.0558, "AR086056": 1.405, "AR086063": 1.5235, "AR086070": 1.791, "AR086077": 1.6198, "AR086084": 1.44, "AR086091": 1.276, "AR086098": 1.4025, "AR086112": 1.6578, "AR086119": 1.3417, "AR086133": 1.4172, "AR086147": 1.288, "AR086154": 1.774, "AR086161": 1.9972, "AR086175": 2.126, "AR086189": 1.9195, "AR090007": 1.24, "AR090014": 1.2725, "AR090035": 1.3068, "AR090042": 1.312, "AR090049": 1.2833, "AR090056": 1.2725, "AR090091": 1.313, "AR090105": 1.2715}}, "n_regions": 253}}, "note": "Regional means across years (same aggregation as matplotlib map panels). Geometry is simplified admin boundaries from cybench/data/polygons."};
+    const coverageInfo = document.getElementById("coverage-info");
+    const heatmapWrap = document.getElementById("heatmap-wrap");
+    const datasetFilter = document.getElementById("dataset-filter");
+    const modelFilter = document.getElementById("model-filter");
+    const groupDatasets = document.getElementById("group-datasets");
+    const colorModeSelect = document.getElementById("color-mode");
+    const selectionLabel = document.getElementById("selection-label");
+    const missingNote = document.getElementById("missing-note");
+    const imgGrid = document.getElementById("img-grid");
+    const drillColB = document.getElementById("drill-col-b");
+    const mapCaptionLeft = document.getElementById("map-caption-left");
+    const mapCaptionRight = document.getElementById("map-caption-right");
+    const drillImageA = document.getElementById("drill-image-a");
+    const drillImageB = document.getElementById("drill-image-b");
+    const mapGridDynamic = document.getElementById("map-grid-dynamic");
+    const regionMapActual = document.getElementById("region-map-actual");
+    const regionMapPred = document.getElementById("region-map-pred");
+    const regionMapLegendActual = document.getElementById("region-map-legend-actual");
+    const regionMapLegendPred = document.getElementById("region-map-legend-pred");
+    const panelButtons = Array.from(document.querySelectorAll(".toolbar button"));
+
+    const HAS_DYNAMIC_MAPS = Boolean(
+      MAP_DATA && MAP_DATA.datasets && Object.keys(MAP_DATA.datasets).length
+        && MAP_DATA.geojson_by_country && Object.keys(MAP_DATA.geojson_by_country).length
+    );
+    const geoCache = new Map();
+    const REGION_MAP_WIDTH = 520;
+    const REGION_MAP_HEIGHT = 420;
+    const REGION_MAP_MARGIN = 10;
+    const REGION_FILL_MISSING = "#f0f0f0";
+
+    function fmtMap(v, digits = 2) {
+      if (v === null || v === undefined || Number.isNaN(v)) return "—";
+      return Number(v).toFixed(digits);
+    }
+
+    async function loadCountryGeojson(country) {
+      if (geoCache.has(country)) return geoCache.get(country);
+      const href = (MAP_DATA.geojson_by_country || {})[country];
+      if (!href) return null;
+      const geo = await d3.json(href);
+      const features = (geo.features || []).map(f => ({
+        ...f,
+        properties: { ...f.properties, loc: String(f.properties.loc ?? "") },
+      }));
+      geoCache.set(country, features);
+      return features;
+    }
+
+    function yieldColor(value, extent) {
+      if (value == null || !extent) return REGION_FILL_MISSING;
+      const [lo, hi] = extent;
+      if (hi <= lo) return d3.interpolateOrRd(0.5);
+      const t = Math.max(0, Math.min(1, (value - lo) / (hi - lo)));
+      return d3.interpolateOrRd(t);
+    }
+
+    function sharedYieldExtent(actualMap, predMap) {
+      const vals = [
+        ...Object.values(actualMap || {}),
+        ...Object.values(predMap || {}),
+      ].filter(v => v != null && !Number.isNaN(v));
+      if (!vals.length) return null;
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      const pad = (hi - lo) * 0.05 || 0.5;
+      return [lo - pad, hi + pad];
+    }
+
+    function renderRegionChoropleth(container, features, valueByLoc, extent, title) {
+      container.innerHTML = "";
+      if (!features || !features.length) {
+        container.innerHTML = `<p class="muted">${title}: no geometry.</p>`;
+        return;
+      }
+      const svg = d3.select(container).append("svg")
+        .attr("viewBox", `0 0 ${REGION_MAP_WIDTH} ${REGION_MAP_HEIGHT}`)
+        .attr("role", "img")
+        .attr("aria-label", title);
+      const projection = d3.geoMercator().fitExtent(
+        [[REGION_MAP_MARGIN, REGION_MAP_MARGIN],
+         [REGION_MAP_WIDTH - REGION_MAP_MARGIN, REGION_MAP_HEIGHT - REGION_MAP_MARGIN]],
+        { type: "FeatureCollection", features },
+      );
+      const path = d3.geoPath(projection);
+      svg.selectAll("path.region")
+        .data(features)
+        .join("path")
+        .attr("class", "region")
+        .attr("d", path)
+        .attr("fill", d => {
+          const loc = d.properties.loc;
+          const v = valueByLoc ? valueByLoc[loc] : null;
+          return yieldColor(v, extent);
+        })
+        .attr("stroke", "#fff")
+        .selectAll("title")
+        .data(d => [d])
+        .join("title")
+        .text(d => {
+          const loc = d.properties.loc;
+          const v = valueByLoc ? valueByLoc[loc] : null;
+          return v == null ? `${loc}: no data` : `${loc}: ${fmtMap(v)}`;
+        });
+    }
+
+    async function renderDynamicMaps(dataset, model) {
+      const slice = (MAP_DATA.datasets || {})[dataset];
+      if (!slice) return false;
+      const country = slice.country;
+      const features = await loadCountryGeojson(country);
+      if (!features) return false;
+      const actual = slice.actual || {};
+      const pred = (slice.models || {})[model] || {};
+      const extent = sharedYieldExtent(actual, pred);
+      renderRegionChoropleth(
+        regionMapActual,
+        features,
+        actual,
+        extent,
+        "Ground truth (mean yield)",
+      );
+      renderRegionChoropleth(
+        regionMapPred,
+        features,
+        pred,
+        extent,
+        `Model prediction (${model})`,
+      );
+      if (extent) {
+        const label = `${fmtMap(extent[0])} → ${fmtMap(extent[1])}`;
+        regionMapLegendActual.textContent = label;
+        regionMapLegendPred.textContent = label;
+      }
+      return true;
+    }
+
+    function showMapMode(useDynamic) {
+      mapGridDynamic.style.display = useDynamic ? "" : "none";
+      imgGrid.style.display = useDynamic ? "none" : "";
+    }
+
+    const METRIC_COLUMNS = [
+      { key: "region_year_r2", label: "R²", group: "Region-Year", higherBetter: true, title: "R² on all region-year rows (absolute prediction quality)" },
+      { key: "region_year_nrmse", label: "NRMSE", group: "Region-Year", higherBetter: false, title: "Normalized RMSE on absolute yields" },
+      {
+        key: "spatial_r",
+        label: "r<br><span class=\"metric-sub\">med/yr</span>",
+        group: "Spatial",
+        higherBetter: true,
+        title: "Slice by year; Pearson r across regions each year; median across years (years with ≥3 regions)",
+      },
+      {
+        key: "spatial_r_agg",
+        label: "r<br><span class=\"metric-sub\">agg</span>",
+        group: "Spatial",
+        higherBetter: true,
+        title: "Mean yield across years per region; one Pearson r across regions",
+      },
+      {
+        key: "temporal_r",
+        label: "r<br><span class=\"metric-sub\">med/reg</span>",
+        group: "Temporal",
+        higherBetter: true,
+        title: "Slice by region; Pearson r across years per region; median across regions (regions with ≥3 years)",
+      },
+      {
+        key: "temporal_r_agg",
+        label: "r<br><span class=\"metric-sub\">agg</span>",
+        group: "Temporal",
+        higherBetter: true,
+        title: "Mean yield across regions each year; one Pearson r across years",
+      },
+      {
+        key: "anomaly_r",
+        label: "r<br><span class=\"metric-sub\">med/reg</span>",
+        group: "Anomaly",
+        higherBetter: true,
+        title: "Per region: Pearson r on yield minus regional mean; median across regions",
+      },
+      {
+        key: "anomaly_r_pooled",
+        label: "r<br><span class=\"metric-sub\">pooled</span>",
+        group: "Anomaly",
+        higherBetter: true,
+        title: "Pooled Pearson r on all location-de-meaned yields",
+      },
+    ];
+
+    const R_FIXED = { min: -1, max: 1, higherBetter: true };
+
+    // Absolute color scales — comparable across rows and dashboards.
+    const FIXED_SCALES = {
+      region_year_r2: { min: 0, max: 1, higherBetter: true },
+      region_year_nrmse: { min: 0, max: 0.5, higherBetter: false },
+      spatial_r: R_FIXED,
+      spatial_r_agg: R_FIXED,
+      temporal_r: R_FIXED,
+      temporal_r_agg: R_FIXED,
+      anomaly_r: R_FIXED,
+      anomaly_r_pooled: R_FIXED,
+    };
+
+    let selectedCell = null;
+    let activePanel = "maps";
+    let allRows = [];
+    let sortKey = "region_year_nrmse";
+    let sortDir = "asc";
+    let colorMode = "fixed";
+    let deepLink = readDeepLink();
+
+    function readDeepLink() {
+      const params = new URLSearchParams(window.location.search);
+      const model = (params.get("model") || "").trim();
+      if (!model) return null;
+      return {
+        model,
+        dataset: (params.get("dataset") || "").trim(),
+        panel: (params.get("panel") || "").trim(),
+      };
+    }
+
+    function rowMatchesDeepLink(row) {
+      if (!deepLink?.model) return false;
+      if (row.model.toLowerCase() !== deepLink.model.toLowerCase()) return false;
+      if (deepLink.dataset && row.dataset.toLowerCase() !== deepLink.dataset.toLowerCase()) {
+        return false;
+      }
+      return true;
+    }
+
+    function applyDeepLinkToFilters() {
+      if (!deepLink?.model) return null;
+      const match = allRows.find(rowMatchesDeepLink);
+      if (!match) return null;
+      modelFilter.value = match.model;
+      if (deepLink.dataset) datasetFilter.value = match.dataset;
+      if (["maps", "scatter", "temporal"].includes(deepLink.panel)) {
+        activePanel = deepLink.panel;
+        panelButtons.forEach(b => {
+          b.classList.toggle("active", b.dataset.panel === activePanel);
+        });
+      }
+      return match;
+    }
+
+    function parseDataset(dataset) {
+      const idx = dataset.lastIndexOf("_");
+      if (idx <= 0) return { crop: dataset, country: "" };
+      return { crop: dataset.slice(0, idx), country: dataset.slice(idx + 1) };
+    }
+
+    function formatValue(v) {
+      return (v === null || v === undefined || Number.isNaN(v)) ? "-" : v.toFixed(3);
+    }
+
+    function metricStd(row, key) {
+      const v = row.metrics[`${key}_std`];
+      return (v === null || v === undefined || Number.isNaN(v)) ? null : v;
+    }
+
+    function formatMetricCell(row, key) {
+      const v = metricValue(row, key);
+      if (v === null) return "-";
+      const std = metricStd(row, key);
+      if (std === null) return formatValue(v);
+      return `${formatValue(v)}<span class="metric-std">±${formatValue(std)}</span>`;
+    }
+
+    function metricValue(row, key) {
+      const v = row.metrics[key];
+      return (v === null || v === undefined || Number.isNaN(v)) ? null : v;
+    }
+
+    function compareRows(a, b) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      const getSortVal = (row) => {
+        if (sortKey === "dataset") return row.dataset;
+        if (sortKey === "model") return row.model;
+        if (sortKey === "n_regions") return row.n_regions;
+        if (sortKey === "n_years") return row.n_years;
+        if (sortKey === "n_samples") return row.n_samples;
+        return metricValue(row, sortKey);
+      };
+      const av = getSortVal(a);
+      const bv = getSortVal(b);
+      const aMissing = av === null || av === undefined || av === "";
+      const bMissing = bv === null || bv === undefined || bv === "";
+      if (aMissing && bMissing) return a.model.localeCompare(b.model);
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      if (typeof av === "string") return dir * av.localeCompare(bv);
+      return dir * (av - bv);
+    }
+
+    function heatColor(value, min, max, higherBetter) {
+      if (value === null || min === null || max === null || min === max) return null;
+      const t = higherBetter
+        ? (value - min) / (max - min)
+        : (max - value) / (max - min);
+      const clamped = Math.max(0, Math.min(1, t));
+      const hue = Math.round(clamped * 120);
+      const alpha = 0.12 + clamped * 0.28;
+      return `hsla(${hue}, 55%, 42%, ${alpha.toFixed(2)})`;
+    }
+
+    function columnStats(rows, key) {
+      const vals = rows.map(r => metricValue(r, key)).filter(v => v !== null);
+      if (!vals.length) return { min: null, max: null };
+      return { min: Math.min(...vals), max: Math.max(...vals) };
+    }
+
+    function scaleForColumn(key, rows) {
+      if (colorMode === "fixed" && FIXED_SCALES[key]) {
+        return FIXED_SCALES[key];
+      }
+      const col = METRIC_COLUMNS.find(c => c.key === key);
+      const stats = columnStats(rows, key);
+      return {
+        min: stats.min,
+        max: stats.max,
+        higherBetter: col ? col.higherBetter : true,
+      };
+    }
+
+    function buildRows() {
+      const grouped = new Map();
+      for (const rec of DATA) {
+        const key = `${rec.dataset}|||${rec.model}`;
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            dataset: rec.dataset,
+            model: rec.model,
+            n_regions: rec.n_regions,
+            n_years: rec.n_years,
+            n_samples: rec.n_samples,
+            images: rec.images || {},
+            metrics: {},
+          });
+        }
+        const metricKey = `${rec.view}_${rec.metric}`;
+        grouped.get(key).metrics[metricKey] = rec.value;
+        if (rec.value_std !== null && rec.value_std !== undefined && !Number.isNaN(rec.value_std)) {
+          grouped.get(key).metrics[`${metricKey}_std`] = rec.value_std;
+        }
+      }
+      allRows = Array.from(grouped.values());
+    }
+
+    function filteredRows() {
+      const ds = datasetFilter.value;
+      const modelQ = modelFilter.value.trim().toLowerCase();
+      let rows = allRows.filter(r => {
+        if (ds && r.dataset !== ds) return false;
+        if (modelQ && !r.model.toLowerCase().includes(modelQ)) return false;
+        return true;
+      });
+      rows.sort((a, b) => {
+        if (groupDatasets.checked && sortKey !== "dataset") {
+          const byDs = a.dataset.localeCompare(b.dataset);
+          if (byDs !== 0) return byDs;
+        }
+        return compareRows(a, b);
+      });
+      return rows;
+    }
+
+    function renderDatasetCell(row, showLabel) {
+      if (!showLabel) return `<td class="dataset-cell continued">.</td>`;
+      const parts = parseDataset(row.dataset);
+      const country = parts.country
+        ? `<span class="badge country">${parts.country}</span>`
+        : "";
+      return `<td class="dataset-cell"><span class="dataset-parts"><span class="badge">${parts.crop}</span>${country}</span></td>`;
+    }
+
+    function renderHeatmap({ preserveSelection = false } = {}) {
+      const prev = preserveSelection && selectedCell
+        ? `${selectedCell.dataset}|||${selectedCell.model}`
+        : null;
+
+      const datasets = Array.from(new Set(allRows.map(r => r.dataset))).sort();
+      const models = Array.from(new Set(allRows.map(r => r.model))).sort();
+      const priorDataset = datasetFilter.value;
+      const priorModel = modelFilter.value;
+
+      datasetFilter.innerHTML = `<option value="">All datasets</option>` +
+        datasets.map(d => `<option value="${d}">${d}</option>`).join("");
+
+      let deepTarget = null;
+      if (!preserveSelection && deepLink?.model) {
+        deepTarget = applyDeepLinkToFilters();
+      } else {
+        if (priorDataset && datasets.includes(priorDataset)) {
+          datasetFilter.value = priorDataset;
+        }
+        modelFilter.value = priorModel;
+      }
+
+      const rows = filteredRows();
+
+      coverageInfo.textContent =
+        `Showing ${rows.length} of ${allRows.length} rows (datasets=${datasets.length}, models=${models.length})`;
+
+      const stats = {};
+      for (const col of METRIC_COLUMNS) {
+        stats[col.key] = scaleForColumn(col.key, rows);
+      }
+
+      const sortMark = (key) => sortKey === key
+        ? `<span class="sort-mark">${sortDir === "asc" ? "▲" : "▼"}</span>`
+        : `<span class="sort-mark"></span>`;
+
+      let html = `
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2" class="sortable" data-sort="dataset">Dataset ${sortMark("dataset")}</th>
+      <th rowspan="2" class="sortable" data-sort="model">Model ${sortMark("model")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_regions">Regions ${sortMark("n_regions")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_years">Years ${sortMark("n_years")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_samples">Samples ${sortMark("n_samples")}</th>
+      <th colspan="3" class="group-head">Region-Year</th>
+      <th colspan="2" class="group-head" title="Spatial pattern recovery">Spatial<span class="group-hint">slice by year → R² → median</span></th>
+      <th colspan="2" class="group-head" title="Temporal dynamics recovery">Temporal<span class="group-hint">slice by region → R² → median</span></th>
+      <th colspan="2" class="group-head">Anomaly</th>
+    </tr>
+    <tr>`;
+      for (const col of METRIC_COLUMNS) {
+        const tip = col.title ? ` title="${col.title}"` : "";
+        html += `<th class="sortable" data-sort="${col.key}"${tip}>${col.label} ${sortMark(col.key)}</th>`;
+      }
+      html += `</tr></thead><tbody>`;
+
+      let prevDataset = null;
+      rows.forEach((row, idx) => {
+        const groupClass = idx % 2 === 0 ? "group-a" : "group-b";
+        const showDataset = !groupDatasets.checked || row.dataset !== prevDataset || datasetFilter.value;
+        prevDataset = row.dataset;
+        const payload = encodeURIComponent(JSON.stringify(row));
+        html += `<tr class="metric-row ${groupClass}" data-row="${payload}">`;
+        html += renderDatasetCell(row, showDataset);
+        html += `<td>${row.model}</td><td>${row.n_regions ?? "—"}</td><td>${row.n_years ?? "—"}</td><td>${row.n_samples ?? "—"}</td>`;
+        for (const col of METRIC_COLUMNS) {
+          const v = metricValue(row, col.key);
+          const scale = stats[col.key];
+          const bg = heatColor(v, scale.min, scale.max, scale.higherBetter);
+          const style = bg ? ` style="background-color:${bg}"` : "";
+          const cls = v === null ? "metric-cell missing" : "metric-cell";
+          html += `<td class="${cls}"${style}>${formatMetricCell(row, col.key)}</td>`;
+        }
+        html += `</tr>`;
+      });
+      html += "</tbody></table>";
+      heatmapWrap.innerHTML = html;
+
+      const metricRows = Array.from(heatmapWrap.querySelectorAll("tr.metric-row"));
+      metricRows.forEach(tr => {
+        tr.addEventListener("click", () => {
+          metricRows.forEach(r => r.classList.remove("selected"));
+          tr.classList.add("selected");
+          selectedCell = JSON.parse(decodeURIComponent(tr.dataset.row));
+          refreshDrill();
+        });
+      });
+
+      heatmapWrap.querySelectorAll("th.sortable").forEach(th => {
+        th.addEventListener("click", () => {
+          const key = th.dataset.sort;
+          if (sortKey === key) {
+            sortDir = sortDir === "asc" ? "desc" : "asc";
+          } else {
+            sortKey = key;
+            const col = METRIC_COLUMNS.find(c => c.key === key);
+            if (col) {
+              sortDir = col.higherBetter ? "desc" : "asc";
+            } else if (key === "dataset" || key === "model") {
+              sortDir = "asc";
+            } else {
+              sortDir = "desc";
+            }
+          }
+          renderHeatmap({ preserveSelection: true });
+        });
+      });
+
+      if (prev) {
+        const target = metricRows.find(r => {
+          const rec = JSON.parse(decodeURIComponent(r.dataset.row));
+          return `${rec.dataset}|||${rec.model}` === prev;
+        });
+        if (target) {
+          target.click();
+          return;
+        }
+      }
+
+      if (deepTarget) {
+        const want = `${deepTarget.dataset}|||${deepTarget.model}`;
+        const target = metricRows.find(r => {
+          const rec = JSON.parse(decodeURIComponent(r.dataset.row));
+          return `${rec.dataset}|||${rec.model}` === want;
+        });
+        if (target) {
+          deepLink = null;
+          target.click();
+          document.getElementById("drill-down")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+
+      if (metricRows.length > 0) {
+        if (!deepLink) metricRows[0].click();
+      } else {
+        selectedCell = null;
+        drillImageA.removeAttribute("src");
+        drillImageB.removeAttribute("src");
+        missingNote.textContent = "No rows match the current filters.";
+        selectionLabel.textContent = "No selection.";
+      }
+    }
+
+    function refreshDrill() {
+      if (!selectedCell) return;
+      const parts = parseDataset(selectedCell.dataset);
+      const label = parts.country
+        ? `${parts.crop} (${parts.country}) · ${selectedCell.model}`
+        : `${selectedCell.dataset} · ${selectedCell.model}`;
+      selectionLabel.textContent = label;
+      const images = selectedCell.images || {};
+      missingNote.textContent = "";
+
+      if (activePanel === "maps") {
+        if (HAS_DYNAMIC_MAPS && (MAP_DATA.datasets || {})[selectedCell.dataset]) {
+          showMapMode(true);
+          renderDynamicMaps(selectedCell.dataset, selectedCell.model).then(ok => {
+            if (!ok) {
+              showMapMode(false);
+              missingNote.textContent =
+                "Could not render dynamic maps (missing geometry or preds). "
+                + "Re-run collect to export preds/ and ensure polygons exist.";
+            }
+          }).catch(err => {
+            showMapMode(false);
+            missingNote.textContent = `Map error: ${err}`;
+          });
+          return;
+        }
+
+        showMapMode(false);
+        imgGrid.classList.add("two");
+        drillColB.style.display = "";
+        mapCaptionLeft.style.display = "";
+        mapCaptionRight.style.display = "";
+        mapCaptionLeft.textContent = "Ground truth (mean yield)";
+        mapCaptionRight.textContent = "Model prediction";
+
+        const actual = images["map_actual"] || "";
+        const pred = images["map_pred"] || "";
+        if (!actual && !pred) {
+          drillImageA.removeAttribute("src");
+          drillImageB.removeAttribute("src");
+          missingNote.textContent =
+            "No map images found. Re-run collect with --plot, or ensure preds/ exists for dynamic maps.";
+          return;
+        }
+        if (actual) drillImageA.src = actual; else drillImageA.removeAttribute("src");
+        if (pred) drillImageB.src = pred; else drillImageB.removeAttribute("src");
+        return;
+      }
+
+      showMapMode(false);
+      imgGrid.classList.remove("two");
+      drillColB.style.display = "none";
+      mapCaptionLeft.style.display = "none";
+      mapCaptionRight.style.display = "none";
+      drillImageB.removeAttribute("src");
+
+      const path = images[activePanel] || "";
+      if (!path) {
+        drillImageA.removeAttribute("src");
+        missingNote.textContent = `No image found for panel: ${activePanel}`;
+        return;
+      }
+      drillImageA.src = path;
+    }
+
+    datasetFilter.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    modelFilter.addEventListener("input", () => renderHeatmap({ preserveSelection: true }));
+    groupDatasets.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    colorModeSelect.addEventListener("change", () => {
+      colorMode = colorModeSelect.value;
+      renderHeatmap({ preserveSelection: true });
+    });
+
+    panelButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        panelButtons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activePanel = btn.dataset.panel;
+        refreshDrill();
+      });
+    });
+
+    drillImageA.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load image. Re-run collect with plot enabled to regenerate dashboard assets.";
+    });
+    drillImageB.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load prediction map. Re-run collect with plot enabled.";
+    });
+
+    buildRows();
+    renderHeatmap();
+  </script>
