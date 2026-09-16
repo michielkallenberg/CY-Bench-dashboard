@@ -1,0 +1,1318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CY-Bench Multi-Model Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --card: #fff;
+      --border: #d8dee4;
+      --text: #1f2328;
+      --muted: #656d76;
+      --accent: #0969da;
+      --accent-soft: #ddf4ff;
+      --group-a: #f6f8fa;
+      --group-b: #fff;
+      --good: #1a7f37;
+      --bad: #cf222e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1.25rem;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .page { max-width: 1400px; margin: 0 auto; }
+    h2 { margin: 0 0 1rem; font-size: 1.35rem; font-weight: 600; }
+    h3 { margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+    }
+    .card + .card { margin-top: 1rem; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .table-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      align-items: center;
+      margin: 0.5rem 0 0.75rem;
+    }
+    .table-controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .table-controls select,
+    .table-controls input[type="search"] {
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: inherit;
+      background: #fff;
+    }
+    .table-controls input[type="search"] { min-width: 10rem; }
+    .table-scroll {
+      overflow: auto;
+      max-height: min(70vh, 720px);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.86rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.45rem 0.55rem;
+      text-align: center;
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) { text-align: left; }
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f3f4f6;
+      font-weight: 600;
+    }
+    thead tr:nth-child(2) th { top: 2.1rem; }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    th.sortable:hover { background: #e8eaed; }
+    th .sort-mark {
+      display: inline-block;
+      width: 0.9rem;
+      color: var(--accent);
+      font-size: 0.75rem;
+    }
+    th.group-head {
+      border-bottom: 2px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    th.group-head .group-hint {
+      display: block;
+      font-weight: 400;
+      font-size: 0.65rem;
+      text-transform: none;
+      letter-spacing: 0;
+      margin-top: 0.12rem;
+      line-height: 1.2;
+    }
+    th .metric-sub {
+      font-weight: 500;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    tr.metric-row { cursor: pointer; }
+    tr.metric-row:hover td { filter: brightness(0.97); }
+    tr.metric-row.selected td {
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    tr.group-a td { background: var(--group-a); }
+    tr.group-b td { background: var(--group-b); }
+    td.dataset-cell {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    td.dataset-cell.continued {
+      color: transparent;
+      user-select: none;
+    }
+    td.metric-cell { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.88rem; }
+    td.metric-cell.missing { color: #9a9a9a; }
+    td.metric-cell .metric-std { color: var(--muted); font-size: 0.92em; }
+    .dataset-parts {
+      display: flex;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .badge.country { background: #f0f0f0; color: #444; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0; }
+    .toolbar button {
+      padding: 0.4rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .toolbar button:hover { background: #f6f8fa; }
+    .toolbar button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .toolbar button:disabled,
+    .toolbar button.is-disabled {
+      opacity: 1;
+      cursor: not-allowed;
+      background: #eef0f2;
+      color: #8b949e;
+      border-color: #d0d7de;
+      border-style: dashed;
+    }
+    .toolbar button:disabled:hover,
+    .toolbar button.is-disabled:hover {
+      background: #eef0f2;
+    }
+    .toolbar button.active:disabled,
+    .toolbar button.active.is-disabled {
+      background: #eef0f2;
+      color: #8b949e;
+      border-color: #d0d7de;
+    }
+    .img-grid { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
+    .img-grid.two { grid-template-columns: 1fr 1fr; }
+    .img-grid img {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      display: block;
+      background: #fff;
+    }
+    .map-caption {
+      font-size: 0.82rem;
+      margin-bottom: 0.35rem;
+      text-align: center;
+    }
+    @media (max-width: 900px) {
+      .img-grid.two { grid-template-columns: 1fr; }
+    }
+    img {
+      max-width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      min-height: 120px;
+      background: #fff;
+    }
+    .region-map-wrap { width: 100%; overflow: hidden; min-height: 280px; }
+    .region-map-wrap svg { display: block; width: 100%; height: auto; }
+    .region-map-wrap .region {
+      stroke: #000;
+      stroke-width: 0.2px;
+      transition: fill 0.12s;
+    }
+    .region-map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin-top: 0.35rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      justify-content: center;
+    }
+    .region-map-gradient {
+      display: inline-block;
+      width: 140px;
+      height: 10px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: linear-gradient(to right, #440154, #31688e, #35b779, #fde725);
+    }
+    #shap-panel { margin-top: 0.5rem; }
+    #shap-meta-chart { min-height: 220px; margin-bottom: 1rem; }
+    #shap-meta-chart .bar-label { font-size: 0.82rem; fill: var(--text); }
+    #shap-meta-chart .bar-value { font-size: 0.75rem; fill: var(--muted); }
+    #shap-features-table { font-size: 0.84rem; }
+    #shap-features-table th, #shap-features-table td { text-align: left; }
+    #shap-features-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .map-year-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem 1rem;
+      margin: 0.35rem 0 0.75rem;
+      font-size: 0.88rem;
+    }
+    .map-year-controls label {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+    }
+    .map-year-controls input[type="range"] {
+      width: min(320px, 100%);
+      accent-color: var(--accent);
+    }
+    #map-year-label {
+      min-width: 7rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h2>CY-Bench multi-model local dashboard</h2>
+    <div class="card">
+      <h3>Model comparison</h3>
+      <div class="muted" id="coverage-info"></div>
+      <div class="table-controls">
+        <label>
+          Dataset
+          <select id="dataset-filter">
+            <option value="">All datasets</option>
+          </select>
+        </label>
+        <label>
+          Model
+          <input type="search" id="model-filter" placeholder="Filter models…" />
+        </label>
+        <label>
+          <input type="checkbox" id="group-datasets" checked />
+          Group by dataset
+        </label>
+        <label>
+          Colors
+          <select id="color-mode">
+            <option value="fixed" selected>Fixed scale (absolute)</option>
+            <option value="column">Relative to filtered rows</option>
+          </select>
+        </label>
+      </div>
+      <div class="muted" style="margin-bottom: 0.5rem;">Click a column header to sort. Lower NRMSE is better; higher R² and r are better. Pattern axes: spatial r/year, temporal r/reg, anomaly anom/reg or pooled. Fixed colors: NRMSE 0–0.5, R² 0–1, r −1–1.</div>
+      <div class="table-scroll" id="heatmap-wrap"></div>
+    </div>
+
+    <div class="card" id="drill-down">
+      <h3>Drill-down plots</h3>
+      <div id="selection-label" class="muted">Click a table row to inspect plots.</div>
+      <div class="toolbar">
+        <button data-panel="maps" class="active">Maps</button>
+        <button data-panel="scatter">Scatter</button>
+        <button data-panel="temporal">Temporal</button>
+        <button data-panel="shap" id="shap-panel-btn" type="button" disabled title="SHAP">SHAP</button>
+      </div>
+      <div id="missing-note" class="muted"></div>
+      <div id="shap-panel" style="display:none;">
+        <div class="muted" id="shap-caption"></div>
+        <div id="shap-meta-chart"></div>
+        <table id="shap-features-table">
+          <thead>
+            <tr><th>Rank</th><th>Feature</th><th>Median |SHAP|</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="map-year-controls" class="map-year-controls" style="display:none;">
+        <label for="map-year-slider">
+          Map year
+          <input type="range" id="map-year-slider" min="0" max="0" step="1" value="0" />
+          <span id="map-year-label">Mean (all years)</span>
+        </label>
+      </div>
+      <div id="map-grid-dynamic" class="img-grid two" style="display:none;">
+        <div>
+          <div id="map-caption-left-dyn" class="map-caption muted">Ground truth (mean yield)</div>
+          <div id="region-map-actual" class="region-map-wrap"></div>
+          <div class="region-map-legend"><span class="region-map-gradient" aria-hidden="true"></span><span id="region-map-legend-actual">—</span></div>
+        </div>
+        <div>
+          <div id="map-caption-right-dyn" class="map-caption muted">Model prediction</div>
+          <div id="region-map-pred" class="region-map-wrap"></div>
+          <div class="region-map-legend"><span class="region-map-gradient" aria-hidden="true"></span><span id="region-map-legend-pred">—</span></div>
+        </div>
+      </div>
+      <div id="img-grid" class="img-grid two">
+        <div>
+          <div id="map-caption-left" class="map-caption muted">Ground truth (mean yield)</div>
+          <img id="drill-image-a" alt="Ground truth map" />
+        </div>
+        <div id="drill-col-b">
+          <div id="map-caption-right" class="map-caption muted">Model prediction</div>
+          <img id="drill-image-b" alt="Model prediction map" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DATA = [{"model": "autoformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter.png", "temporal": "assets/maize_SN_temporal.png"}, "view": "region_year", "metric": "r2", "value": 0.1726, "value_std": 0.0628}, {"model": "autoformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter.png", "temporal": "assets/maize_SN_temporal.png"}, "view": "region_year", "metric": "nrmse", "value": 0.4896, "value_std": 0.0184}, {"model": "autoformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter.png", "temporal": "assets/maize_SN_temporal.png"}, "view": "spatial", "metric": "r", "value": 0.6355, "value_std": 0.0126}, {"model": "autoformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter.png", "temporal": "assets/maize_SN_temporal.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6577, "value_std": 0.0354}, {"model": "autoformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter.png", "temporal": "assets/maize_SN_temporal.png"}, "view": "temporal", "metric": "r", "value": -0.1437, "value_std": 0.1656}, {"model": "autoformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter.png", "temporal": "assets/maize_SN_temporal.png"}, "view": "temporal", "metric": "r_agg", "value": -0.1046, "value_std": 0.3164}, {"model": "autoformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter.png", "temporal": "assets/maize_SN_temporal.png"}, "view": "anomaly", "metric": "r", "value": -0.1437, "value_std": 0.1656}, {"model": "autoformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter.png", "temporal": "assets/maize_SN_temporal.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0932, "value_std": 0.0641}, {"model": "average_yield", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_7cef1249.png", "temporal": "assets/maize_SN_temporal_c8da915d.png"}, "view": "region_year", "metric": "r2", "value": 0.0422, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_7cef1249.png", "temporal": "assets/maize_SN_temporal_c8da915d.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5271, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_7cef1249.png", "temporal": "assets/maize_SN_temporal_c8da915d.png"}, "view": "spatial", "metric": "r", "value": 0.5241, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_7cef1249.png", "temporal": "assets/maize_SN_temporal_c8da915d.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7894, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_7cef1249.png", "temporal": "assets/maize_SN_temporal_c8da915d.png"}, "view": "temporal", "metric": "r", "value": -0.5138, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_7cef1249.png", "temporal": "assets/maize_SN_temporal_c8da915d.png"}, "view": "temporal", "metric": "r_agg", "value": 0.0967, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_7cef1249.png", "temporal": "assets/maize_SN_temporal_c8da915d.png"}, "view": "anomaly", "metric": "r", "value": -0.5138, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_7cef1249.png", "temporal": "assets/maize_SN_temporal_c8da915d.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.2102, "value_std": 0.0}, {"model": "cnn_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_689f880c.png", "temporal": "assets/maize_SN_temporal_4f0f3285.png"}, "view": "region_year", "metric": "r2", "value": 0.1172, "value_std": 0.1474}, {"model": "cnn_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_689f880c.png", "temporal": "assets/maize_SN_temporal_4f0f3285.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5046, "value_std": 0.0423}, {"model": "cnn_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_689f880c.png", "temporal": "assets/maize_SN_temporal_4f0f3285.png"}, "view": "spatial", "metric": "r", "value": 0.6067, "value_std": 0.1103}, {"model": "cnn_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_689f880c.png", "temporal": "assets/maize_SN_temporal_4f0f3285.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6721, "value_std": 0.0611}, {"model": "cnn_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_689f880c.png", "temporal": "assets/maize_SN_temporal_4f0f3285.png"}, "view": "temporal", "metric": "r", "value": -0.1629, "value_std": 0.1059}, {"model": "cnn_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_689f880c.png", "temporal": "assets/maize_SN_temporal_4f0f3285.png"}, "view": "temporal", "metric": "r_agg", "value": 0.0858, "value_std": 0.2041}, {"model": "cnn_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_689f880c.png", "temporal": "assets/maize_SN_temporal_4f0f3285.png"}, "view": "anomaly", "metric": "r", "value": -0.1629, "value_std": 0.1059}, {"model": "cnn_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_689f880c.png", "temporal": "assets/maize_SN_temporal_4f0f3285.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0493, "value_std": 0.0164}, {"model": "dlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_1eebe6d2.png", "temporal": "assets/maize_SN_temporal_2c2c0cbb.png"}, "view": "region_year", "metric": "r2", "value": 0.0151, "value_std": 0.1096}, {"model": "dlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_1eebe6d2.png", "temporal": "assets/maize_SN_temporal_2c2c0cbb.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5338, "value_std": 0.0296}, {"model": "dlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_1eebe6d2.png", "temporal": "assets/maize_SN_temporal_2c2c0cbb.png"}, "view": "spatial", "metric": "r", "value": 0.5669, "value_std": 0.0754}, {"model": "dlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_1eebe6d2.png", "temporal": "assets/maize_SN_temporal_2c2c0cbb.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7077, "value_std": 0.0576}, {"model": "dlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_1eebe6d2.png", "temporal": "assets/maize_SN_temporal_2c2c0cbb.png"}, "view": "temporal", "metric": "r", "value": -0.0503, "value_std": 0.208}, {"model": "dlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_1eebe6d2.png", "temporal": "assets/maize_SN_temporal_2c2c0cbb.png"}, "view": "temporal", "metric": "r_agg", "value": 0.0014, "value_std": 0.4375}, {"model": "dlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_1eebe6d2.png", "temporal": "assets/maize_SN_temporal_2c2c0cbb.png"}, "view": "anomaly", "metric": "r", "value": -0.0503, "value_std": 0.208}, {"model": "dlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_1eebe6d2.png", "temporal": "assets/maize_SN_temporal_2c2c0cbb.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0717, "value_std": 0.0653}, {"model": "informer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_fd982f80.png", "temporal": "assets/maize_SN_temporal_c776cc5b.png"}, "view": "region_year", "metric": "r2", "value": 0.1645, "value_std": 0.0951}, {"model": "informer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_fd982f80.png", "temporal": "assets/maize_SN_temporal_c776cc5b.png"}, "view": "region_year", "metric": "nrmse", "value": 0.4917, "value_std": 0.0272}, {"model": "informer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_fd982f80.png", "temporal": "assets/maize_SN_temporal_c776cc5b.png"}, "view": "spatial", "metric": "r", "value": 0.6105, "value_std": 0.0541}, {"model": "informer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_fd982f80.png", "temporal": "assets/maize_SN_temporal_c776cc5b.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7414, "value_std": 0.0607}, {"model": "informer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_fd982f80.png", "temporal": "assets/maize_SN_temporal_c776cc5b.png"}, "view": "temporal", "metric": "r", "value": 0.0662, "value_std": 0.1404}, {"model": "informer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_fd982f80.png", "temporal": "assets/maize_SN_temporal_c776cc5b.png"}, "view": "temporal", "metric": "r_agg", "value": 0.313, "value_std": 0.4456}, {"model": "informer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_fd982f80.png", "temporal": "assets/maize_SN_temporal_c776cc5b.png"}, "view": "anomaly", "metric": "r", "value": 0.0662, "value_std": 0.1404}, {"model": "informer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_fd982f80.png", "temporal": "assets/maize_SN_temporal_c776cc5b.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0042, "value_std": 0.0715}, {"model": "lightgbm", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_2363b80d.png", "temporal": "assets/maize_SN_temporal_a013a79c.png"}, "view": "region_year", "metric": "r2", "value": 0.0642, "value_std": 0.0081}, {"model": "lightgbm", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_2363b80d.png", "temporal": "assets/maize_SN_temporal_a013a79c.png"}, "view": "region_year", "metric": "nrmse", "value": 0.521, "value_std": 0.0023}, {"model": "lightgbm", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_2363b80d.png", "temporal": "assets/maize_SN_temporal_a013a79c.png"}, "view": "spatial", "metric": "r", "value": 0.6105, "value_std": 0.0088}, {"model": "lightgbm", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_2363b80d.png", "temporal": "assets/maize_SN_temporal_a013a79c.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7031, "value_std": 0.0054}, {"model": "lightgbm", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_2363b80d.png", "temporal": "assets/maize_SN_temporal_a013a79c.png"}, "view": "temporal", "metric": "r", "value": 0.1074, "value_std": 0.0212}, {"model": "lightgbm", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_2363b80d.png", "temporal": "assets/maize_SN_temporal_a013a79c.png"}, "view": "temporal", "metric": "r_agg", "value": 0.2879, "value_std": 0.0201}, {"model": "lightgbm", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_2363b80d.png", "temporal": "assets/maize_SN_temporal_a013a79c.png"}, "view": "anomaly", "metric": "r", "value": 0.1074, "value_std": 0.0212}, {"model": "lightgbm", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_2363b80d.png", "temporal": "assets/maize_SN_temporal_a013a79c.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0604, "value_std": 0.0053}, {"model": "lpjml_bc", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_55ac2c4a.png", "temporal": "assets/maize_SN_temporal_b31a4d30.png"}, "view": "region_year", "metric": "r2", "value": -0.8152, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_55ac2c4a.png", "temporal": "assets/maize_SN_temporal_b31a4d30.png"}, "view": "region_year", "metric": "nrmse", "value": 0.7256, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_55ac2c4a.png", "temporal": "assets/maize_SN_temporal_b31a4d30.png"}, "view": "spatial", "metric": "r", "value": 0.3814, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_55ac2c4a.png", "temporal": "assets/maize_SN_temporal_b31a4d30.png"}, "view": "spatial", "metric": "r_agg", "value": 0.4155, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_55ac2c4a.png", "temporal": "assets/maize_SN_temporal_b31a4d30.png"}, "view": "temporal", "metric": "r", "value": 0.1258, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_55ac2c4a.png", "temporal": "assets/maize_SN_temporal_b31a4d30.png"}, "view": "temporal", "metric": "r_agg", "value": 0.3079, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_55ac2c4a.png", "temporal": "assets/maize_SN_temporal_b31a4d30.png"}, "view": "anomaly", "metric": "r", "value": 0.1258, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_55ac2c4a.png", "temporal": "assets/maize_SN_temporal_b31a4d30.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.0058, "value_std": 0.0}, {"model": "lstm_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_6a053628.png", "temporal": "assets/maize_SN_temporal_a946b320.png"}, "view": "region_year", "metric": "r2", "value": -0.0603, "value_std": 0.2156}, {"model": "lstm_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_6a053628.png", "temporal": "assets/maize_SN_temporal_a946b320.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5523, "value_std": 0.0552}, {"model": "lstm_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_6a053628.png", "temporal": "assets/maize_SN_temporal_a946b320.png"}, "view": "spatial", "metric": "r", "value": 0.5902, "value_std": 0.0334}, {"model": "lstm_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_6a053628.png", "temporal": "assets/maize_SN_temporal_a946b320.png"}, "view": "spatial", "metric": "r_agg", "value": 0.5737, "value_std": 0.034}, {"model": "lstm_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_6a053628.png", "temporal": "assets/maize_SN_temporal_a946b320.png"}, "view": "temporal", "metric": "r", "value": -0.051, "value_std": 0.3702}, {"model": "lstm_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_6a053628.png", "temporal": "assets/maize_SN_temporal_a946b320.png"}, "view": "temporal", "metric": "r_agg", "value": 0.0006, "value_std": 0.6479}, {"model": "lstm_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_6a053628.png", "temporal": "assets/maize_SN_temporal_a946b320.png"}, "view": "anomaly", "metric": "r", "value": -0.051, "value_std": 0.3702}, {"model": "lstm_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_6a053628.png", "temporal": "assets/maize_SN_temporal_a946b320.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0577, "value_std": 0.1316}, {"model": "nlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_a4fbc828.png", "temporal": "assets/maize_SN_temporal_048022a7.png"}, "view": "region_year", "metric": "r2", "value": -0.1404, "value_std": 0.0717}, {"model": "nlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_a4fbc828.png", "temporal": "assets/maize_SN_temporal_048022a7.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5749, "value_std": 0.0182}, {"model": "nlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_a4fbc828.png", "temporal": "assets/maize_SN_temporal_048022a7.png"}, "view": "spatial", "metric": "r", "value": 0.6162, "value_std": 0.0513}, {"model": "nlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_a4fbc828.png", "temporal": "assets/maize_SN_temporal_048022a7.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6699, "value_std": 0.0484}, {"model": "nlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_a4fbc828.png", "temporal": "assets/maize_SN_temporal_048022a7.png"}, "view": "temporal", "metric": "r", "value": -0.3101, "value_std": 0.1729}, {"model": "nlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_a4fbc828.png", "temporal": "assets/maize_SN_temporal_048022a7.png"}, "view": "temporal", "metric": "r_agg", "value": -0.7916, "value_std": 0.1198}, {"model": "nlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_a4fbc828.png", "temporal": "assets/maize_SN_temporal_048022a7.png"}, "view": "anomaly", "metric": "r", "value": -0.3101, "value_std": 0.1729}, {"model": "nlinear_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_a4fbc828.png", "temporal": "assets/maize_SN_temporal_048022a7.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.153, "value_std": 0.0639}, {"model": "patchtst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_24556b45.png", "temporal": "assets/maize_SN_temporal_6c099711.png"}, "view": "region_year", "metric": "r2", "value": -0.0267, "value_std": 0.1099}, {"model": "patchtst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_24556b45.png", "temporal": "assets/maize_SN_temporal_6c099711.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5451, "value_std": 0.0297}, {"model": "patchtst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_24556b45.png", "temporal": "assets/maize_SN_temporal_6c099711.png"}, "view": "spatial", "metric": "r", "value": 0.5632, "value_std": 0.0695}, {"model": "patchtst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_24556b45.png", "temporal": "assets/maize_SN_temporal_6c099711.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6569, "value_std": 0.0462}, {"model": "patchtst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_24556b45.png", "temporal": "assets/maize_SN_temporal_6c099711.png"}, "view": "temporal", "metric": "r", "value": -0.0822, "value_std": 0.273}, {"model": "patchtst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_24556b45.png", "temporal": "assets/maize_SN_temporal_6c099711.png"}, "view": "temporal", "metric": "r_agg", "value": -0.1807, "value_std": 0.556}, {"model": "patchtst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_24556b45.png", "temporal": "assets/maize_SN_temporal_6c099711.png"}, "view": "anomaly", "metric": "r", "value": -0.0822, "value_std": 0.273}, {"model": "patchtst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_24556b45.png", "temporal": "assets/maize_SN_temporal_6c099711.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0476, "value_std": 0.1187}, {"model": "random_forest", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_19be6099.png", "temporal": "assets/maize_SN_temporal_507aef64.png"}, "view": "region_year", "metric": "r2", "value": 0.1007, "value_std": 0.0131}, {"model": "random_forest", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_19be6099.png", "temporal": "assets/maize_SN_temporal_507aef64.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5107, "value_std": 0.0037}, {"model": "random_forest", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_19be6099.png", "temporal": "assets/maize_SN_temporal_507aef64.png"}, "view": "spatial", "metric": "r", "value": 0.4531, "value_std": 0.0138}, {"model": "random_forest", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_19be6099.png", "temporal": "assets/maize_SN_temporal_507aef64.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6236, "value_std": 0.0041}, {"model": "random_forest", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_19be6099.png", "temporal": "assets/maize_SN_temporal_507aef64.png"}, "view": "temporal", "metric": "r", "value": -0.1888, "value_std": 0.0238}, {"model": "random_forest", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_19be6099.png", "temporal": "assets/maize_SN_temporal_507aef64.png"}, "view": "temporal", "metric": "r_agg", "value": 0.0669, "value_std": 0.0299}, {"model": "random_forest", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_19be6099.png", "temporal": "assets/maize_SN_temporal_507aef64.png"}, "view": "anomaly", "metric": "r", "value": -0.1888, "value_std": 0.0238}, {"model": "random_forest", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_19be6099.png", "temporal": "assets/maize_SN_temporal_507aef64.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.133, "value_std": 0.0072}, {"model": "ridge", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_5f0ae1f1.png", "temporal": "assets/maize_SN_temporal_d279f7a4.png"}, "view": "region_year", "metric": "r2", "value": 0.0807, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_5f0ae1f1.png", "temporal": "assets/maize_SN_temporal_d279f7a4.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5164, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_5f0ae1f1.png", "temporal": "assets/maize_SN_temporal_d279f7a4.png"}, "view": "spatial", "metric": "r", "value": 0.6051, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_5f0ae1f1.png", "temporal": "assets/maize_SN_temporal_d279f7a4.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6486, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_5f0ae1f1.png", "temporal": "assets/maize_SN_temporal_d279f7a4.png"}, "view": "temporal", "metric": "r", "value": -0.5152, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_5f0ae1f1.png", "temporal": "assets/maize_SN_temporal_d279f7a4.png"}, "view": "temporal", "metric": "r_agg", "value": -0.7004, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_5f0ae1f1.png", "temporal": "assets/maize_SN_temporal_d279f7a4.png"}, "view": "anomaly", "metric": "r", "value": -0.5152, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_5f0ae1f1.png", "temporal": "assets/maize_SN_temporal_d279f7a4.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.2008, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_288bb2e0.png", "temporal": "assets/maize_SN_temporal_b75809fa.png"}, "view": "region_year", "metric": "r2", "value": 0.2457, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_288bb2e0.png", "temporal": "assets/maize_SN_temporal_b75809fa.png"}, "view": "region_year", "metric": "nrmse", "value": 0.4677, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_288bb2e0.png", "temporal": "assets/maize_SN_temporal_b75809fa.png"}, "view": "spatial", "metric": "r", "value": 0.6189, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_288bb2e0.png", "temporal": "assets/maize_SN_temporal_b75809fa.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7466, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_288bb2e0.png", "temporal": "assets/maize_SN_temporal_b75809fa.png"}, "view": "temporal", "metric": "r", "value": -0.0632, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_288bb2e0.png", "temporal": "assets/maize_SN_temporal_b75809fa.png"}, "view": "temporal", "metric": "r_agg", "value": 0.0586, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_288bb2e0.png", "temporal": "assets/maize_SN_temporal_b75809fa.png"}, "view": "anomaly", "metric": "r", "value": -0.0632, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_288bb2e0.png", "temporal": "assets/maize_SN_temporal_b75809fa.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0836, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_b0d66032.png", "temporal": "assets/maize_SN_temporal_75795a50.png"}, "view": "region_year", "metric": "r2", "value": 0.1103, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_b0d66032.png", "temporal": "assets/maize_SN_temporal_75795a50.png"}, "view": "region_year", "metric": "nrmse", "value": 0.508, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_b0d66032.png", "temporal": "assets/maize_SN_temporal_75795a50.png"}, "view": "spatial", "metric": "r", "value": 0.5829, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_b0d66032.png", "temporal": "assets/maize_SN_temporal_75795a50.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6803, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_b0d66032.png", "temporal": "assets/maize_SN_temporal_75795a50.png"}, "view": "temporal", "metric": "r", "value": -0.2022, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_b0d66032.png", "temporal": "assets/maize_SN_temporal_75795a50.png"}, "view": "temporal", "metric": "r_agg", "value": 0.0892, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_b0d66032.png", "temporal": "assets/maize_SN_temporal_75795a50.png"}, "view": "anomaly", "metric": "r", "value": -0.2022, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_b0d66032.png", "temporal": "assets/maize_SN_temporal_75795a50.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0741, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_db58776c.png", "temporal": "assets/maize_SN_temporal_30236cc7.png"}, "view": "region_year", "metric": "r2", "value": 0.0774, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_db58776c.png", "temporal": "assets/maize_SN_temporal_30236cc7.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5173, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_db58776c.png", "temporal": "assets/maize_SN_temporal_30236cc7.png"}, "view": "spatial", "metric": "r", "value": 0.622, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_db58776c.png", "temporal": "assets/maize_SN_temporal_30236cc7.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7348, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_db58776c.png", "temporal": "assets/maize_SN_temporal_30236cc7.png"}, "view": "temporal", "metric": "r", "value": -0.3222, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_db58776c.png", "temporal": "assets/maize_SN_temporal_30236cc7.png"}, "view": "temporal", "metric": "r_agg", "value": 0.0248, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_db58776c.png", "temporal": "assets/maize_SN_temporal_30236cc7.png"}, "view": "anomaly", "metric": "r", "value": -0.3222, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_db58776c.png", "temporal": "assets/maize_SN_temporal_30236cc7.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.15, "value_std": 0.0}, {"model": "transformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_36115b61.png", "temporal": "assets/maize_SN_temporal_ae7094bb.png"}, "view": "region_year", "metric": "r2", "value": 0.294, "value_std": 0.0567}, {"model": "transformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_36115b61.png", "temporal": "assets/maize_SN_temporal_ae7094bb.png"}, "view": "region_year", "metric": "nrmse", "value": 0.4522, "value_std": 0.0182}, {"model": "transformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_36115b61.png", "temporal": "assets/maize_SN_temporal_ae7094bb.png"}, "view": "spatial", "metric": "r", "value": 0.6808, "value_std": 0.0285}, {"model": "transformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_36115b61.png", "temporal": "assets/maize_SN_temporal_ae7094bb.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7798, "value_std": 0.0176}, {"model": "transformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_36115b61.png", "temporal": "assets/maize_SN_temporal_ae7094bb.png"}, "view": "temporal", "metric": "r", "value": 0.0342, "value_std": 0.1455}, {"model": "transformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_36115b61.png", "temporal": "assets/maize_SN_temporal_ae7094bb.png"}, "view": "temporal", "metric": "r_agg", "value": 0.333, "value_std": 0.4193}, {"model": "transformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_36115b61.png", "temporal": "assets/maize_SN_temporal_ae7094bb.png"}, "view": "anomaly", "metric": "r", "value": 0.0342, "value_std": 0.1455}, {"model": "transformer_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_36115b61.png", "temporal": "assets/maize_SN_temporal_ae7094bb.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.0418, "value_std": 0.069}, {"model": "trend", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_c1c508d5.png", "temporal": "assets/maize_SN_temporal_a8564729.png"}, "view": "region_year", "metric": "r2", "value": 0.2586, "value_std": 0.0}, {"model": "trend", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_c1c508d5.png", "temporal": "assets/maize_SN_temporal_a8564729.png"}, "view": "region_year", "metric": "nrmse", "value": 0.4637, "value_std": 0.0}, {"model": "trend", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_c1c508d5.png", "temporal": "assets/maize_SN_temporal_a8564729.png"}, "view": "spatial", "metric": "r", "value": 0.6761, "value_std": 0.0}, {"model": "trend", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_c1c508d5.png", "temporal": "assets/maize_SN_temporal_a8564729.png"}, "view": "spatial", "metric": "r_agg", "value": 0.8922, "value_std": 0.0}, {"model": "trend", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_c1c508d5.png", "temporal": "assets/maize_SN_temporal_a8564729.png"}, "view": "temporal", "metric": "r", "value": -0.5254, "value_std": 0.0}, {"model": "trend", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_c1c508d5.png", "temporal": "assets/maize_SN_temporal_a8564729.png"}, "view": "temporal", "metric": "r_agg", "value": -0.4653, "value_std": 0.0}, {"model": "trend", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_c1c508d5.png", "temporal": "assets/maize_SN_temporal_a8564729.png"}, "view": "anomaly", "metric": "r", "value": -0.5254, "value_std": 0.0}, {"model": "trend", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_c1c508d5.png", "temporal": "assets/maize_SN_temporal_a8564729.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.2482, "value_std": 0.0}, {"model": "tst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_e7bef24f.png", "temporal": "assets/maize_SN_temporal_5afecc90.png"}, "view": "region_year", "metric": "r2", "value": -0.0186, "value_std": 0.1469}, {"model": "tst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_e7bef24f.png", "temporal": "assets/maize_SN_temporal_5afecc90.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5424, "value_std": 0.039}, {"model": "tst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_e7bef24f.png", "temporal": "assets/maize_SN_temporal_5afecc90.png"}, "view": "spatial", "metric": "r", "value": 0.6188, "value_std": 0.0388}, {"model": "tst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_e7bef24f.png", "temporal": "assets/maize_SN_temporal_5afecc90.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6253, "value_std": 0.0588}, {"model": "tst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_e7bef24f.png", "temporal": "assets/maize_SN_temporal_5afecc90.png"}, "view": "temporal", "metric": "r", "value": -0.3192, "value_std": 0.2531}, {"model": "tst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_e7bef24f.png", "temporal": "assets/maize_SN_temporal_5afecc90.png"}, "view": "temporal", "metric": "r_agg", "value": -0.4176, "value_std": 0.4078}, {"model": "tst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_e7bef24f.png", "temporal": "assets/maize_SN_temporal_5afecc90.png"}, "view": "anomaly", "metric": "r", "value": -0.3192, "value_std": 0.2531}, {"model": "tst_lf", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_e7bef24f.png", "temporal": "assets/maize_SN_temporal_5afecc90.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.1482, "value_std": 0.0935}, {"model": "xgboost", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_13de97cd.png", "temporal": "assets/maize_SN_temporal_ad786028.png"}, "view": "region_year", "metric": "r2", "value": 0.1002, "value_std": 0.0122}, {"model": "xgboost", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_13de97cd.png", "temporal": "assets/maize_SN_temporal_ad786028.png"}, "view": "region_year", "metric": "nrmse", "value": 0.5109, "value_std": 0.0035}, {"model": "xgboost", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_13de97cd.png", "temporal": "assets/maize_SN_temporal_ad786028.png"}, "view": "spatial", "metric": "r", "value": 0.4653, "value_std": 0.0336}, {"model": "xgboost", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_13de97cd.png", "temporal": "assets/maize_SN_temporal_ad786028.png"}, "view": "spatial", "metric": "r_agg", "value": 0.5904, "value_std": 0.0159}, {"model": "xgboost", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_13de97cd.png", "temporal": "assets/maize_SN_temporal_ad786028.png"}, "view": "temporal", "metric": "r", "value": -0.2116, "value_std": 0.1377}, {"model": "xgboost", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_13de97cd.png", "temporal": "assets/maize_SN_temporal_ad786028.png"}, "view": "temporal", "metric": "r_agg", "value": 0.0731, "value_std": 0.0944}, {"model": "xgboost", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_13de97cd.png", "temporal": "assets/maize_SN_temporal_ad786028.png"}, "view": "anomaly", "metric": "r", "value": -0.2116, "value_std": 0.1377}, {"model": "xgboost", "dataset": "maize_SN", "n_regions": 40, "n_years": 5, "n_samples": 187, "images": {"scatter": "assets/maize_SN_scatter_13de97cd.png", "temporal": "assets/maize_SN_temporal_ad786028.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.1416, "value_std": 0.0128}];
+    const MAP_DATA = {"geojson_by_country": {"SN": "assets/regions_SN.geojson"}, "yield_ranges": {"wheat": {"min": 0, "max": 9}, "maize": {"min": 0, "max": 14}}, "datasets": {"maize_SN": {"country": "SN", "crop": "maize", "yield_range": {"min": 0, "max": 14}, "years": [2011, 2012, 2013, 2014, 2015], "actual": {"SN-A2-0103": 0.7752, "SN-A2-0701": 0.56, "SN-A2-0702": 0.5274, "SN-A2-0703": 0.5292, "SN-A2-0801": 0.5315, "SN-A2-0802": 0.4658, "SN-A2-0803": 0.6916, "SN-A2-1201": 1.0378, "SN-A2-1202": 1.0778, "SN-A2-1203": 0.8634, "SN-A2-1701": 2.7375, "SN-A2-1702": 2.6125, "SN-A2-1801": 2.1823, "SN-A2-1802": 1.0, "SN-A2-1803": 0.6417, "SN-A2-1902": 0.6936, "SN-A2-1903": 0.5375, "SN-A2-2001": 1.7268, "SN-A2-2002": 1.5046, "SN-A2-2003": 1.8432, "SN-A2-2101": 1.401, "SN-A2-2102": 1.535, "SN-A2-2103": 1.5628, "SN-A2-2201": 1.3678, "SN-A2-2202": 1.003, "SN-A2-2203": 1.0538, "SN-A2-2204": 1.0054, "SN-A2-2301": 1.9344, "SN-A2-2302": 1.7298, "SN-A2-2303": 1.4364, "SN-A2-2401": 0.7166, "SN-A2-2402": 0.8906, "SN-A2-2403": 2.0606, "SN-A2-2501": 1.2612, "SN-A2-2502": 1.173, "SN-A2-2503": 1.092, "SN-A2-2504": 1.1626, "SN-A2-2601": 1.0058, "SN-A2-2602": 1.6464, "SN-A2-2603": 0.7334}, "actual_by_year": {"2011": {"SN-A2-0103": 0.89, "SN-A2-0701": 0.55, "SN-A2-0702": 0.3, "SN-A2-0703": 0.446, "SN-A2-0802": 0.285, "SN-A2-0803": 0.672, "SN-A2-1201": 0.789, "SN-A2-1202": 0.463, "SN-A2-1203": 0.515, "SN-A2-1902": 0.618, "SN-A2-2001": 1.472, "SN-A2-2002": 1.113, "SN-A2-2003": 1.496, "SN-A2-2101": 0.75, "SN-A2-2102": 0.776, "SN-A2-2103": 0.786, "SN-A2-2201": 0.463, "SN-A2-2202": 0.476, "SN-A2-2203": 0.869, "SN-A2-2204": 0.625, "SN-A2-2301": 1.874, "SN-A2-2302": 0.963, "SN-A2-2303": 0.517, "SN-A2-2401": 0.485, "SN-A2-2402": 0.772, "SN-A2-2403": 1.886, "SN-A2-2501": 0.776, "SN-A2-2502": 0.773, "SN-A2-2503": 0.561, "SN-A2-2504": 1.453, "SN-A2-2601": 0.736, "SN-A2-2602": 1.428, "SN-A2-2603": 0.807}, "2012": {"SN-A2-0103": 0.65, "SN-A2-0701": 0.5, "SN-A2-0702": 0.598, "SN-A2-0703": 0.65, "SN-A2-0801": 0.7, "SN-A2-0802": 0.508, "SN-A2-0803": 0.85, "SN-A2-1201": 1.0, "SN-A2-1202": 1.964, "SN-A2-1203": 0.869, "SN-A2-1701": 3.25, "SN-A2-1702": 3.25, "SN-A2-1801": 3.86, "SN-A2-1803": 0.875, "SN-A2-1902": 0.7, "SN-A2-1903": 0.7, "SN-A2-2001": 2.006, "SN-A2-2002": 2.254, "SN-A2-2003": 2.014, "SN-A2-2101": 1.445, "SN-A2-2102": 1.721, "SN-A2-2103": 1.273, "SN-A2-2201": 1.964, "SN-A2-2202": 0.998, "SN-A2-2203": 0.8, "SN-A2-2204": 0.791, "SN-A2-2301": 1.637, "SN-A2-2302": 1.687, "SN-A2-2303": 1.434, "SN-A2-2401": 0.577, "SN-A2-2402": 1.158, "SN-A2-2403": 1.797, "SN-A2-2501": 1.388, "SN-A2-2502": 1.357, "SN-A2-2503": 1.628, "SN-A2-2504": 1.368, "SN-A2-2601": 1.0, "SN-A2-2602": 2.266, "SN-A2-2603": 0.81}, "2013": {"SN-A2-0103": 0.798, "SN-A2-0701": 0.6, "SN-A2-0702": 0.5, "SN-A2-0703": 0.6, "SN-A2-0801": 0.335, "SN-A2-0802": 0.502, "SN-A2-0803": 0.686, "SN-A2-1201": 1.0, "SN-A2-1202": 0.762, "SN-A2-1203": 0.733, "SN-A2-1701": 2.5, "SN-A2-1702": 2.5, "SN-A2-1902": 0.75, "SN-A2-2001": 2.256, "SN-A2-2002": 1.656, "SN-A2-2003": 2.206, "SN-A2-2101": 1.36, "SN-A2-2102": 1.428, "SN-A2-2103": 2.055, "SN-A2-2201": 1.312, "SN-A2-2202": 0.941, "SN-A2-2203": 1.3, "SN-A2-2204": 1.111, "SN-A2-2301": 1.911, "SN-A2-2302": 1.9, "SN-A2-2303": 1.881, "SN-A2-2401": 0.981, "SN-A2-2402": 0.773, "SN-A2-2403": 2.62, "SN-A2-2501": 1.642, "SN-A2-2502": 1.335, "SN-A2-2503": 1.121, "SN-A2-2504": 0.842, "SN-A2-2601": 1.493, "SN-A2-2602": 1.215, "SN-A2-2603": 0.85}, "2014": {"SN-A2-0103": 0.65, "SN-A2-0701": 0.65, "SN-A2-0702": 0.55, "SN-A2-0703": 0.45, "SN-A2-0801": 0.341, "SN-A2-0802": 0.403, "SN-A2-0803": 0.4, "SN-A2-1201": 1.2, "SN-A2-1202": 0.7, "SN-A2-1203": 1.2, "SN-A2-1701": 2.5, "SN-A2-1702": 2.5, "SN-A2-1801": 0.9, "SN-A2-1802": 0.5, "SN-A2-1803": 0.65, "SN-A2-1902": 0.6, "SN-A2-1903": 0.375, "SN-A2-2001": 1.1, "SN-A2-2002": 1.3, "SN-A2-2003": 1.5, "SN-A2-2101": 1.65, "SN-A2-2102": 1.75, "SN-A2-2103": 1.7, "SN-A2-2201": 1.1, "SN-A2-2202": 1.1, "SN-A2-2203": 1.1, "SN-A2-2204": 1.0, "SN-A2-2301": 1.75, "SN-A2-2302": 1.699, "SN-A2-2303": 1.65, "SN-A2-2401": 0.74, "SN-A2-2402": 0.8, "SN-A2-2403": 1.5, "SN-A2-2501": 1.0, "SN-A2-2502": 1.1, "SN-A2-2503": 1.15, "SN-A2-2504": 0.95, "SN-A2-2601": 0.6, "SN-A2-2602": 1.4, "SN-A2-2603": 0.5}, "2015": {"SN-A2-0103": 0.888, "SN-A2-0701": 0.5, "SN-A2-0702": 0.689, "SN-A2-0703": 0.5, "SN-A2-0801": 0.75, "SN-A2-0802": 0.631, "SN-A2-0803": 0.85, "SN-A2-1201": 1.2, "SN-A2-1202": 1.5, "SN-A2-1203": 1.0, "SN-A2-1701": 2.7, "SN-A2-1702": 2.2, "SN-A2-1801": 1.787, "SN-A2-1802": 1.5, "SN-A2-1803": 0.4, "SN-A2-1902": 0.8, "SN-A2-2001": 1.8, "SN-A2-2002": 1.2, "SN-A2-2003": 2.0, "SN-A2-2101": 1.8, "SN-A2-2102": 2.0, "SN-A2-2103": 2.0, "SN-A2-2201": 2.0, "SN-A2-2202": 1.5, "SN-A2-2203": 1.2, "SN-A2-2204": 1.5, "SN-A2-2301": 2.5, "SN-A2-2302": 2.4, "SN-A2-2303": 1.7, "SN-A2-2401": 0.8, "SN-A2-2402": 0.95, "SN-A2-2403": 2.5, "SN-A2-2501": 1.5, "SN-A2-2502": 1.3, "SN-A2-2503": 1.0, "SN-A2-2504": 1.2, "SN-A2-2601": 1.2, "SN-A2-2602": 1.923, "SN-A2-2603": 0.7}}, "models": {"autoformer_lf": {"SN-A2-0103": 0.765, "SN-A2-0701": 0.5542, "SN-A2-0702": 0.7424, "SN-A2-0703": 1.0186, "SN-A2-0801": 0.8493, "SN-A2-0802": 0.6916, "SN-A2-0803": 0.694, "SN-A2-1201": 1.2102, "SN-A2-1202": 1.2152, "SN-A2-1203": 1.194, "SN-A2-1701": 2.5753, "SN-A2-1702": 3.4787, "SN-A2-1801": 1.4807, "SN-A2-1802": 2.9695, "SN-A2-1803": 1.102, "SN-A2-1902": 0.774, "SN-A2-1903": 1.428, "SN-A2-2001": 1.2294, "SN-A2-2002": 1.2672, "SN-A2-2003": 1.222, "SN-A2-2101": 1.224, "SN-A2-2102": 1.2138, "SN-A2-2103": 1.2006, "SN-A2-2201": 1.211, "SN-A2-2202": 0.9988, "SN-A2-2203": 1.084, "SN-A2-2204": 1.0418, "SN-A2-2301": 1.663, "SN-A2-2302": 1.525, "SN-A2-2303": 1.1734, "SN-A2-2401": 0.7182, "SN-A2-2402": 0.727, "SN-A2-2403": 1.3822, "SN-A2-2501": 1.3484, "SN-A2-2502": 1.1426, "SN-A2-2503": 1.0886, "SN-A2-2504": 0.9318, "SN-A2-2601": 0.7678, "SN-A2-2602": 1.4722, "SN-A2-2603": 0.6706}, "average_yield": {"SN-A2-0103": 0.806, "SN-A2-0701": 0.573, "SN-A2-0702": 1.5302, "SN-A2-0703": 0.9818, "SN-A2-0801": 0.4713, "SN-A2-0802": 0.4866, "SN-A2-0803": 0.4994, "SN-A2-1201": 1.2636, "SN-A2-1202": 1.4332, "SN-A2-1203": 0.9972, "SN-A2-1701": 3.3533, "SN-A2-1702": 3.3552, "SN-A2-1801": 2.3667, "SN-A2-1802": 2.18, "SN-A2-1803": 0.8443, "SN-A2-1902": 0.6704, "SN-A2-1903": 2.099, "SN-A2-2001": 1.8238, "SN-A2-2002": 1.4066, "SN-A2-2003": 1.8584, "SN-A2-2101": 1.1184, "SN-A2-2102": 1.1958, "SN-A2-2103": 1.1608, "SN-A2-2201": 1.0264, "SN-A2-2202": 0.8798, "SN-A2-2203": 0.9072, "SN-A2-2204": 0.8118, "SN-A2-2301": 1.6618, "SN-A2-2302": 1.5954, "SN-A2-2303": 1.5156, "SN-A2-2401": 0.5878, "SN-A2-2402": 1.2658, "SN-A2-2403": 1.9652, "SN-A2-2501": 1.3912, "SN-A2-2502": 1.4068, "SN-A2-2503": 1.2846, "SN-A2-2504": 1.5152, "SN-A2-2601": 0.8002, "SN-A2-2602": 1.5228, "SN-A2-2603": 0.6796}, "cnn_lf": {"SN-A2-0103": 0.8222, "SN-A2-0701": 0.791, "SN-A2-0702": 1.5926, "SN-A2-0703": 1.2504, "SN-A2-0801": 0.6598, "SN-A2-0802": 0.5864, "SN-A2-0803": 0.59, "SN-A2-1201": 1.261, "SN-A2-1202": 1.1882, "SN-A2-1203": 1.2468, "SN-A2-1701": 2.6335, "SN-A2-1702": 3.2382, "SN-A2-1801": 1.1403, "SN-A2-1802": 3.4745, "SN-A2-1803": 0.868, "SN-A2-1902": 0.8326, "SN-A2-1903": 0.829, "SN-A2-2001": 1.2524, "SN-A2-2002": 1.2678, "SN-A2-2003": 1.2714, "SN-A2-2101": 1.2944, "SN-A2-2102": 1.2626, "SN-A2-2103": 1.2724, "SN-A2-2201": 1.2798, "SN-A2-2202": 1.0298, "SN-A2-2203": 1.177, "SN-A2-2204": 1.0862, "SN-A2-2301": 1.3644, "SN-A2-2302": 1.328, "SN-A2-2303": 1.4882, "SN-A2-2401": 0.9366, "SN-A2-2402": 0.9242, "SN-A2-2403": 1.4426, "SN-A2-2501": 1.3686, "SN-A2-2502": 1.3084, "SN-A2-2503": 1.2196, "SN-A2-2504": 1.0986, "SN-A2-2601": 0.7448, "SN-A2-2602": 1.4206, "SN-A2-2603": 0.8348}, "dlinear_lf": {"SN-A2-0103": 0.9128, "SN-A2-0701": 0.7768, "SN-A2-0702": 1.1686, "SN-A2-0703": 1.2626, "SN-A2-0801": 0.5588, "SN-A2-0802": 0.538, "SN-A2-0803": 0.5436, "SN-A2-1201": 1.076, "SN-A2-1202": 1.4282, "SN-A2-1203": 1.0562, "SN-A2-1701": 3.0895, "SN-A2-1702": 3.311, "SN-A2-1801": 1.3267, "SN-A2-1802": 3.2665, "SN-A2-1803": 0.5787, "SN-A2-1902": 0.7006, "SN-A2-1903": 0.6855, "SN-A2-2001": 1.4602, "SN-A2-2002": 1.3684, "SN-A2-2003": 1.3266, "SN-A2-2101": 1.3986, "SN-A2-2102": 1.2904, "SN-A2-2103": 1.1934, "SN-A2-2201": 1.2526, "SN-A2-2202": 0.9198, "SN-A2-2203": 0.9102, "SN-A2-2204": 1.1098, "SN-A2-2301": 1.451, "SN-A2-2302": 1.3352, "SN-A2-2303": 1.4266, "SN-A2-2401": 0.7668, "SN-A2-2402": 0.8638, "SN-A2-2403": 1.4762, "SN-A2-2501": 1.1454, "SN-A2-2502": 1.2, "SN-A2-2503": 0.9562, "SN-A2-2504": 0.9876, "SN-A2-2601": 0.7916, "SN-A2-2602": 1.4974, "SN-A2-2603": 0.6984}, "informer_lf": {"SN-A2-0103": 0.6606, "SN-A2-0701": 0.521, "SN-A2-0702": 0.6986, "SN-A2-0703": 0.738, "SN-A2-0801": 0.6993, "SN-A2-0802": 0.5692, "SN-A2-0803": 0.5684, "SN-A2-1201": 1.0588, "SN-A2-1202": 1.2762, "SN-A2-1203": 1.1916, "SN-A2-1701": 2.6317, "SN-A2-1702": 3.1873, "SN-A2-1801": 1.47, "SN-A2-1802": 2.02, "SN-A2-1803": 1.0143, "SN-A2-1902": 0.6976, "SN-A2-1903": 0.7995, "SN-A2-2001": 1.4156, "SN-A2-2002": 1.2222, "SN-A2-2003": 1.179, "SN-A2-2101": 1.0956, "SN-A2-2102": 1.2662, "SN-A2-2103": 1.155, "SN-A2-2201": 1.143, "SN-A2-2202": 0.8412, "SN-A2-2203": 0.9748, "SN-A2-2204": 1.0404, "SN-A2-2301": 1.6314, "SN-A2-2302": 1.5554, "SN-A2-2303": 1.1846, "SN-A2-2401": 0.6812, "SN-A2-2402": 0.7692, "SN-A2-2403": 1.3096, "SN-A2-2501": 1.169, "SN-A2-2502": 1.1686, "SN-A2-2503": 1.0226, "SN-A2-2504": 1.1342, "SN-A2-2601": 0.7588, "SN-A2-2602": 1.4116, "SN-A2-2603": 0.6516}, "lightgbm": {"SN-A2-0103": 0.9278, "SN-A2-0701": 1.0536, "SN-A2-0702": 1.6346, "SN-A2-0703": 1.1588, "SN-A2-0801": 0.679, "SN-A2-0802": 0.6538, "SN-A2-0803": 0.5534, "SN-A2-1201": 1.3138, "SN-A2-1202": 1.5414, "SN-A2-1203": 1.0474, "SN-A2-1701": 3.1258, "SN-A2-1702": 3.2893, "SN-A2-1801": 1.0237, "SN-A2-1802": 2.3815, "SN-A2-1803": 1.2553, "SN-A2-1902": 0.9036, "SN-A2-1903": 0.899, "SN-A2-2001": 1.4462, "SN-A2-2002": 1.2884, "SN-A2-2003": 1.352, "SN-A2-2101": 1.2006, "SN-A2-2102": 1.2038, "SN-A2-2103": 1.1704, "SN-A2-2201": 1.2456, "SN-A2-2202": 1.0304, "SN-A2-2203": 0.9728, "SN-A2-2204": 0.9768, "SN-A2-2301": 1.4974, "SN-A2-2302": 1.5048, "SN-A2-2303": 1.8016, "SN-A2-2401": 0.7424, "SN-A2-2402": 1.0062, "SN-A2-2403": 1.7086, "SN-A2-2501": 1.42, "SN-A2-2502": 1.2606, "SN-A2-2503": 1.217, "SN-A2-2504": 1.3244, "SN-A2-2601": 0.8048, "SN-A2-2602": 1.6184, "SN-A2-2603": 0.7432}, "lpjml_bc": {"SN-A2-0103": 0.9308, "SN-A2-0701": 0.5132, "SN-A2-0702": 1.0834, "SN-A2-0703": 0.9064, "SN-A2-0801": 0.2527, "SN-A2-0802": 0.2498, "SN-A2-0803": 0.2498, "SN-A2-1201": 1.2028, "SN-A2-1202": 0.2498, "SN-A2-1203": 0.2792, "SN-A2-1701": 2.7142, "SN-A2-1702": 0.2527, "SN-A2-1801": 0.2567, "SN-A2-1802": 0.2785, "SN-A2-1803": 0.2567, "SN-A2-1902": 0.2498, "SN-A2-1903": 0.5545, "SN-A2-2001": 2.103, "SN-A2-2002": 1.0106, "SN-A2-2003": 2.2402, "SN-A2-2101": 1.1176, "SN-A2-2102": 1.1782, "SN-A2-2103": 1.153, "SN-A2-2201": 0.2498, "SN-A2-2202": 0.676, "SN-A2-2203": 1.1766, "SN-A2-2204": 0.81, "SN-A2-2301": 0.2498, "SN-A2-2302": 0.2498, "SN-A2-2303": 0.3804, "SN-A2-2401": 0.4378, "SN-A2-2402": 1.5548, "SN-A2-2403": 1.7236, "SN-A2-2501": 1.6964, "SN-A2-2502": 0.923, "SN-A2-2503": 1.0256, "SN-A2-2504": 1.0486, "SN-A2-2601": 0.8464, "SN-A2-2602": 1.6566, "SN-A2-2603": 0.5396}, "lstm_lf": {"SN-A2-0103": 0.8414, "SN-A2-0701": 0.9812, "SN-A2-0702": 1.1724, "SN-A2-0703": 1.1108, "SN-A2-0801": 0.484, "SN-A2-0802": 0.4456, "SN-A2-0803": 0.401, "SN-A2-1201": 1.3288, "SN-A2-1202": 1.2834, "SN-A2-1203": 1.3202, "SN-A2-1701": 3.3672, "SN-A2-1702": 3.5568, "SN-A2-1801": 0.6793, "SN-A2-1802": 3.2445, "SN-A2-1803": 0.5553, "SN-A2-1902": 0.4572, "SN-A2-1903": 1.9675, "SN-A2-2001": 1.2562, "SN-A2-2002": 1.25, "SN-A2-2003": 1.242, "SN-A2-2101": 1.2838, "SN-A2-2102": 1.3084, "SN-A2-2103": 1.2984, "SN-A2-2201": 1.1256, "SN-A2-2202": 0.9376, "SN-A2-2203": 0.9562, "SN-A2-2204": 1.0046, "SN-A2-2301": 1.3364, "SN-A2-2302": 1.3248, "SN-A2-2303": 1.3646, "SN-A2-2401": 0.7432, "SN-A2-2402": 0.7632, "SN-A2-2403": 1.2818, "SN-A2-2501": 1.2072, "SN-A2-2502": 1.1732, "SN-A2-2503": 0.978, "SN-A2-2504": 0.7992, "SN-A2-2601": 0.7332, "SN-A2-2602": 1.3316, "SN-A2-2603": 0.628}, "nlinear_lf": {"SN-A2-0103": 0.8226, "SN-A2-0701": 0.6154, "SN-A2-0702": 1.3554, "SN-A2-0703": 1.4738, "SN-A2-0801": 0.5925, "SN-A2-0802": 0.4154, "SN-A2-0803": 0.3966, "SN-A2-1201": 0.9776, "SN-A2-1202": 1.3596, "SN-A2-1203": 1.103, "SN-A2-1701": 3.1637, "SN-A2-1702": 3.3225, "SN-A2-1801": 1.2097, "SN-A2-1802": 2.9115, "SN-A2-1803": 0.652, "SN-A2-1902": 0.5336, "SN-A2-1903": 0.7765, "SN-A2-2001": 1.2, "SN-A2-2002": 1.2868, "SN-A2-2003": 1.3696, "SN-A2-2101": 1.0386, "SN-A2-2102": 1.1222, "SN-A2-2103": 1.1178, "SN-A2-2201": 1.2748, "SN-A2-2202": 0.8508, "SN-A2-2203": 0.9954, "SN-A2-2204": 0.9262, "SN-A2-2301": 1.4694, "SN-A2-2302": 1.2046, "SN-A2-2303": 1.486, "SN-A2-2401": 0.8402, "SN-A2-2402": 0.897, "SN-A2-2403": 1.6858, "SN-A2-2501": 1.494, "SN-A2-2502": 1.5178, "SN-A2-2503": 1.1988, "SN-A2-2504": 0.9754, "SN-A2-2601": 0.8824, "SN-A2-2602": 1.6532, "SN-A2-2603": 0.7028}, "patchtst_lf": {"SN-A2-0103": 0.5804, "SN-A2-0701": 0.5352, "SN-A2-0702": 1.5852, "SN-A2-0703": 1.2996, "SN-A2-0801": 0.5515, "SN-A2-0802": 0.5354, "SN-A2-0803": 0.49, "SN-A2-1201": 0.9682, "SN-A2-1202": 1.236, "SN-A2-1203": 1.0006, "SN-A2-1701": 2.4518, "SN-A2-1702": 3.0793, "SN-A2-1801": 1.109, "SN-A2-1802": 2.808, "SN-A2-1803": 0.7393, "SN-A2-1902": 0.5968, "SN-A2-1903": 0.9515, "SN-A2-2001": 1.2722, "SN-A2-2002": 1.2726, "SN-A2-2003": 1.1534, "SN-A2-2101": 1.128, "SN-A2-2102": 1.0394, "SN-A2-2103": 1.0748, "SN-A2-2201": 0.9994, "SN-A2-2202": 0.784, "SN-A2-2203": 0.9492, "SN-A2-2204": 1.0092, "SN-A2-2301": 1.5426, "SN-A2-2302": 1.3896, "SN-A2-2303": 1.3424, "SN-A2-2401": 0.6124, "SN-A2-2402": 0.5704, "SN-A2-2403": 1.2994, "SN-A2-2501": 0.978, "SN-A2-2502": 0.9782, "SN-A2-2503": 0.9634, "SN-A2-2504": 0.8294, "SN-A2-2601": 0.5484, "SN-A2-2602": 1.3462, "SN-A2-2603": 0.5762}, "random_forest": {"SN-A2-0103": 1.016, "SN-A2-0701": 1.04, "SN-A2-0702": 1.0546, "SN-A2-0703": 1.0618, "SN-A2-0801": 0.6925, "SN-A2-0802": 0.6836, "SN-A2-0803": 0.6104, "SN-A2-1201": 1.2534, "SN-A2-1202": 1.5978, "SN-A2-1203": 1.2572, "SN-A2-1701": 3.014, "SN-A2-1702": 3.2607, "SN-A2-1801": 1.4117, "SN-A2-1802": 2.2895, "SN-A2-1803": 1.1667, "SN-A2-1902": 0.9912, "SN-A2-1903": 2.5685, "SN-A2-2001": 1.4692, "SN-A2-2002": 1.3428, "SN-A2-2003": 1.3048, "SN-A2-2101": 1.227, "SN-A2-2102": 1.3798, "SN-A2-2103": 1.3202, "SN-A2-2201": 1.2074, "SN-A2-2202": 1.1116, "SN-A2-2203": 1.0196, "SN-A2-2204": 1.103, "SN-A2-2301": 1.5322, "SN-A2-2302": 1.514, "SN-A2-2303": 1.2778, "SN-A2-2401": 0.8962, "SN-A2-2402": 1.0332, "SN-A2-2403": 1.4408, "SN-A2-2501": 1.1774, "SN-A2-2502": 1.2502, "SN-A2-2503": 1.068, "SN-A2-2504": 1.0706, "SN-A2-2601": 0.953, "SN-A2-2602": 1.4368, "SN-A2-2603": 0.8334}, "ridge": {"SN-A2-0103": 0.9314, "SN-A2-0701": 0.6948, "SN-A2-0702": 1.3598, "SN-A2-0703": 1.4064, "SN-A2-0801": 0.6318, "SN-A2-0802": 0.563, "SN-A2-0803": 0.4674, "SN-A2-1201": 1.365, "SN-A2-1202": 1.3336, "SN-A2-1203": 1.2048, "SN-A2-1701": 2.4547, "SN-A2-1702": 3.002, "SN-A2-1801": 1.1933, "SN-A2-1802": 2.7555, "SN-A2-1803": 0.6277, "SN-A2-1902": 0.613, "SN-A2-1903": 1.539, "SN-A2-2001": 1.3324, "SN-A2-2002": 1.4774, "SN-A2-2003": 1.4506, "SN-A2-2101": 1.406, "SN-A2-2102": 1.376, "SN-A2-2103": 1.6068, "SN-A2-2201": 1.4402, "SN-A2-2202": 1.0974, "SN-A2-2203": 1.1254, "SN-A2-2204": 1.1844, "SN-A2-2301": 1.4022, "SN-A2-2302": 1.576, "SN-A2-2303": 1.5906, "SN-A2-2401": 0.8498, "SN-A2-2402": 0.8988, "SN-A2-2403": 1.3214, "SN-A2-2501": 1.2492, "SN-A2-2502": 1.226, "SN-A2-2503": 1.1818, "SN-A2-2504": 0.9724, "SN-A2-2601": 0.7676, "SN-A2-2602": 1.4168, "SN-A2-2603": 0.779}, "tabdpt": {"SN-A2-0103": 0.9752, "SN-A2-0701": 0.8788, "SN-A2-0702": 1.3934, "SN-A2-0703": 1.1734, "SN-A2-0801": 0.5942, "SN-A2-0802": 0.5428, "SN-A2-0803": 0.5288, "SN-A2-1201": 1.1374, "SN-A2-1202": 1.487, "SN-A2-1203": 1.076, "SN-A2-1701": 3.2722, "SN-A2-1702": 3.2695, "SN-A2-1801": 1.22, "SN-A2-1802": 1.95, "SN-A2-1803": 0.7967, "SN-A2-1902": 0.6448, "SN-A2-1903": 1.6945, "SN-A2-2001": 1.647, "SN-A2-2002": 1.4542, "SN-A2-2003": 1.4842, "SN-A2-2101": 1.1766, "SN-A2-2102": 1.2508, "SN-A2-2103": 1.1874, "SN-A2-2201": 0.9756, "SN-A2-2202": 0.9118, "SN-A2-2203": 0.996, "SN-A2-2204": 0.996, "SN-A2-2301": 1.4768, "SN-A2-2302": 1.4592, "SN-A2-2303": 1.3128, "SN-A2-2401": 0.7704, "SN-A2-2402": 0.8912, "SN-A2-2403": 1.623, "SN-A2-2501": 1.1668, "SN-A2-2502": 1.2026, "SN-A2-2503": 0.99, "SN-A2-2504": 1.0152, "SN-A2-2601": 0.851, "SN-A2-2602": 1.5554, "SN-A2-2603": 0.747}, "tabicl": {"SN-A2-0103": 0.9624, "SN-A2-0701": 1.0056, "SN-A2-0702": 1.2376, "SN-A2-0703": 1.1114, "SN-A2-0801": 0.5892, "SN-A2-0802": 0.5472, "SN-A2-0803": 0.5482, "SN-A2-1201": 1.2658, "SN-A2-1202": 1.5348, "SN-A2-1203": 1.044, "SN-A2-1701": 3.193, "SN-A2-1702": 3.2322, "SN-A2-1801": 1.035, "SN-A2-1802": 2.1815, "SN-A2-1803": 0.848, "SN-A2-1902": 0.6788, "SN-A2-1903": 1.279, "SN-A2-2001": 1.302, "SN-A2-2002": 1.1608, "SN-A2-2003": 1.12, "SN-A2-2101": 0.9726, "SN-A2-2102": 1.133, "SN-A2-2103": 1.0414, "SN-A2-2201": 0.9348, "SN-A2-2202": 0.7772, "SN-A2-2203": 0.8956, "SN-A2-2204": 0.8712, "SN-A2-2301": 1.3784, "SN-A2-2302": 1.32, "SN-A2-2303": 1.29, "SN-A2-2401": 0.6714, "SN-A2-2402": 0.8836, "SN-A2-2403": 1.43, "SN-A2-2501": 1.177, "SN-A2-2502": 1.119, "SN-A2-2503": 0.8988, "SN-A2-2504": 1.0318, "SN-A2-2601": 0.7532, "SN-A2-2602": 1.2338, "SN-A2-2603": 0.681}, "tabpfn": {"SN-A2-0103": 0.9502, "SN-A2-0701": 0.9444, "SN-A2-0702": 1.1732, "SN-A2-0703": 1.0304, "SN-A2-0801": 0.589, "SN-A2-0802": 0.54, "SN-A2-0803": 0.542, "SN-A2-1201": 1.2614, "SN-A2-1202": 1.4866, "SN-A2-1203": 1.0686, "SN-A2-1701": 3.3033, "SN-A2-1702": 3.3148, "SN-A2-1801": 1.4063, "SN-A2-1802": 2.2195, "SN-A2-1803": 1.0923, "SN-A2-1902": 0.7676, "SN-A2-1903": 0.9495, "SN-A2-2001": 1.2944, "SN-A2-2002": 1.1988, "SN-A2-2003": 1.0834, "SN-A2-2101": 1.0148, "SN-A2-2102": 1.1092, "SN-A2-2103": 1.0838, "SN-A2-2201": 0.963, "SN-A2-2202": 0.8578, "SN-A2-2203": 0.8844, "SN-A2-2204": 0.912, "SN-A2-2301": 1.4368, "SN-A2-2302": 1.3526, "SN-A2-2303": 1.307, "SN-A2-2401": 0.7196, "SN-A2-2402": 0.8492, "SN-A2-2403": 1.4928, "SN-A2-2501": 1.1658, "SN-A2-2502": 1.1928, "SN-A2-2503": 0.9364, "SN-A2-2504": 1.0668, "SN-A2-2601": 0.7646, "SN-A2-2602": 1.3746, "SN-A2-2603": 0.6412}, "transformer_lf": {"SN-A2-0103": 0.7158, "SN-A2-0701": 0.3958, "SN-A2-0702": 1.0912, "SN-A2-0703": 0.8236, "SN-A2-0801": 0.5225, "SN-A2-0802": 0.493, "SN-A2-0803": 0.496, "SN-A2-1201": 1.0254, "SN-A2-1202": 1.2932, "SN-A2-1203": 1.0224, "SN-A2-1701": 3.1725, "SN-A2-1702": 3.391, "SN-A2-1801": 1.504, "SN-A2-1802": 2.703, "SN-A2-1803": 0.7417, "SN-A2-1902": 0.716, "SN-A2-1903": 0.5255, "SN-A2-2001": 1.3726, "SN-A2-2002": 1.3834, "SN-A2-2003": 1.3344, "SN-A2-2101": 1.1742, "SN-A2-2102": 1.122, "SN-A2-2103": 1.129, "SN-A2-2201": 1.1242, "SN-A2-2202": 0.949, "SN-A2-2203": 1.0574, "SN-A2-2204": 1.1394, "SN-A2-2301": 1.5406, "SN-A2-2302": 1.5412, "SN-A2-2303": 1.3936, "SN-A2-2401": 0.7398, "SN-A2-2402": 0.758, "SN-A2-2403": 1.5042, "SN-A2-2501": 1.1828, "SN-A2-2502": 1.198, "SN-A2-2503": 1.1048, "SN-A2-2504": 1.2254, "SN-A2-2601": 0.671, "SN-A2-2602": 1.6102, "SN-A2-2603": 0.6518}, "trend": {"SN-A2-0103": 0.806, "SN-A2-0701": 0.573, "SN-A2-0702": 1.5302, "SN-A2-0703": 0.9818, "SN-A2-0801": 0.4713, "SN-A2-0802": 0.4866, "SN-A2-0803": 0.799, "SN-A2-1201": 1.2636, "SN-A2-1202": 1.2686, "SN-A2-1203": 0.9972, "SN-A2-1701": 3.1528, "SN-A2-1702": 3.176, "SN-A2-1801": 2.4757, "SN-A2-1802": 0.8595, "SN-A2-1803": 0.9413, "SN-A2-1902": 0.6704, "SN-A2-1903": 0.9435, "SN-A2-2001": 1.8238, "SN-A2-2002": 1.4066, "SN-A2-2003": 1.8584, "SN-A2-2101": 1.2126, "SN-A2-2102": 1.1958, "SN-A2-2103": 1.1608, "SN-A2-2201": 1.0264, "SN-A2-2202": 0.8798, "SN-A2-2203": 1.0506, "SN-A2-2204": 0.8118, "SN-A2-2301": 1.6618, "SN-A2-2302": 1.5954, "SN-A2-2303": 1.2622, "SN-A2-2401": 0.5878, "SN-A2-2402": 1.2658, "SN-A2-2403": 1.9652, "SN-A2-2501": 1.3912, "SN-A2-2502": 1.4068, "SN-A2-2503": 1.2846, "SN-A2-2504": 1.5152, "SN-A2-2601": 0.8478, "SN-A2-2602": 1.6502, "SN-A2-2603": 0.6796}, "tst_lf": {"SN-A2-0103": 0.7458, "SN-A2-0701": 0.6042, "SN-A2-0702": 1.2502, "SN-A2-0703": 1.039, "SN-A2-0801": 0.7077, "SN-A2-0802": 0.5482, "SN-A2-0803": 0.5258, "SN-A2-1201": 1.1264, "SN-A2-1202": 1.1896, "SN-A2-1203": 1.1476, "SN-A2-1701": 2.4125, "SN-A2-1702": 3.0835, "SN-A2-1801": 1.3263, "SN-A2-1802": 2.597, "SN-A2-1803": 1.0353, "SN-A2-1902": 0.6758, "SN-A2-1903": 1.1285, "SN-A2-2001": 1.1292, "SN-A2-2002": 1.1456, "SN-A2-2003": 1.1322, "SN-A2-2101": 1.1368, "SN-A2-2102": 1.1516, "SN-A2-2103": 1.1292, "SN-A2-2201": 1.0936, "SN-A2-2202": 0.9054, "SN-A2-2203": 1.0618, "SN-A2-2204": 0.936, "SN-A2-2301": 1.4704, "SN-A2-2302": 1.3716, "SN-A2-2303": 1.122, "SN-A2-2401": 0.6374, "SN-A2-2402": 0.6368, "SN-A2-2403": 1.345, "SN-A2-2501": 1.2618, "SN-A2-2502": 1.1188, "SN-A2-2503": 1.0706, "SN-A2-2504": 0.8126, "SN-A2-2601": 0.6738, "SN-A2-2602": 1.3946, "SN-A2-2603": 0.5698}, "twso_bc": {"SN-A2-0701": 0.4762, "SN-A2-1201": 1.4332, "SN-A2-2102": 1.1072, "SN-A2-2601": 0.611}, "xgboost": {"SN-A2-0103": 0.9154, "SN-A2-0701": 1.0016, "SN-A2-0702": 1.0644, "SN-A2-0703": 0.9924, "SN-A2-0801": 0.6815, "SN-A2-0802": 0.6798, "SN-A2-0803": 0.6886, "SN-A2-1201": 1.2798, "SN-A2-1202": 1.6324, "SN-A2-1203": 1.2694, "SN-A2-1701": 3.07, "SN-A2-1702": 3.1285, "SN-A2-1801": 1.2943, "SN-A2-1802": 2.3785, "SN-A2-1803": 1.2213, "SN-A2-1902": 0.8548, "SN-A2-1903": 2.782, "SN-A2-2001": 1.4676, "SN-A2-2002": 1.363, "SN-A2-2003": 1.3484, "SN-A2-2101": 1.3244, "SN-A2-2102": 1.4096, "SN-A2-2103": 1.3148, "SN-A2-2201": 1.243, "SN-A2-2202": 1.0286, "SN-A2-2203": 1.0848, "SN-A2-2204": 1.1312, "SN-A2-2301": 1.5656, "SN-A2-2302": 1.5224, "SN-A2-2303": 1.3288, "SN-A2-2401": 0.9216, "SN-A2-2402": 0.9756, "SN-A2-2403": 1.5068, "SN-A2-2501": 1.174, "SN-A2-2502": 1.255, "SN-A2-2503": 1.0844, "SN-A2-2504": 1.0768, "SN-A2-2601": 0.8752, "SN-A2-2602": 1.4646, "SN-A2-2603": 0.8006}}, "models_by_year": {"autoformer_lf": {"2011": {"SN-A2-0103": 0.859, "SN-A2-0701": 0.609, "SN-A2-0702": 1.172, "SN-A2-0703": 1.371, "SN-A2-0802": 0.763, "SN-A2-0803": 0.761, "SN-A2-1201": 1.103, "SN-A2-1202": 1.368, "SN-A2-1203": 1.155, "SN-A2-1902": 0.786, "SN-A2-2001": 1.104, "SN-A2-2002": 1.128, "SN-A2-2003": 1.133, "SN-A2-2101": 1.192, "SN-A2-2102": 1.036, "SN-A2-2103": 1.131, "SN-A2-2201": 1.256, "SN-A2-2202": 0.931, "SN-A2-2203": 1.272, "SN-A2-2204": 0.897, "SN-A2-2301": 1.449, "SN-A2-2302": 1.33, "SN-A2-2303": 1.275, "SN-A2-2401": 0.766, "SN-A2-2402": 0.77, "SN-A2-2403": 1.58, "SN-A2-2501": 1.461, "SN-A2-2502": 1.331, "SN-A2-2503": 1.276, "SN-A2-2504": 0.827, "SN-A2-2601": 0.779, "SN-A2-2602": 1.61, "SN-A2-2603": 0.758}, "2012": {"SN-A2-0103": 0.847, "SN-A2-0701": 0.51, "SN-A2-0702": 1.102, "SN-A2-0703": 1.388, "SN-A2-0801": 0.913, "SN-A2-0802": 0.736, "SN-A2-0803": 0.738, "SN-A2-1201": 1.243, "SN-A2-1202": 1.312, "SN-A2-1203": 1.251, "SN-A2-1701": 3.767, "SN-A2-1702": 3.802, "SN-A2-1801": 1.168, "SN-A2-1803": 1.099, "SN-A2-1902": 0.821, "SN-A2-1903": 1.471, "SN-A2-2001": 1.251, "SN-A2-2002": 1.308, "SN-A2-2003": 1.251, "SN-A2-2101": 1.289, "SN-A2-2102": 1.216, "SN-A2-2103": 1.231, "SN-A2-2201": 1.147, "SN-A2-2202": 1.098, "SN-A2-2203": 1.231, "SN-A2-2204": 1.093, "SN-A2-2301": 1.96, "SN-A2-2302": 1.707, "SN-A2-2303": 1.335, "SN-A2-2401": 0.782, "SN-A2-2402": 0.79, "SN-A2-2403": 1.55, "SN-A2-2501": 1.463, "SN-A2-2502": 1.304, "SN-A2-2503": 1.237, "SN-A2-2504": 0.942, "SN-A2-2601": 0.845, "SN-A2-2602": 1.611, "SN-A2-2603": 0.707}, "2013": {"SN-A2-0103": 0.603, "SN-A2-0701": 0.453, "SN-A2-0702": 0.258, "SN-A2-0703": 0.708, "SN-A2-0801": 0.759, "SN-A2-0802": 0.581, "SN-A2-0803": 0.586, "SN-A2-1201": 1.096, "SN-A2-1202": 1.076, "SN-A2-1203": 1.051, "SN-A2-1701": 3.358, "SN-A2-1702": 4.188, "SN-A2-1902": 0.705, "SN-A2-2001": 1.118, "SN-A2-2002": 1.16, "SN-A2-2003": 1.102, "SN-A2-2101": 1.087, "SN-A2-2102": 1.128, "SN-A2-2103": 1.067, "SN-A2-2201": 1.045, "SN-A2-2202": 0.871, "SN-A2-2203": 0.821, "SN-A2-2204": 1.024, "SN-A2-2301": 1.615, "SN-A2-2302": 1.53, "SN-A2-2303": 1.011, "SN-A2-2401": 0.602, "SN-A2-2402": 0.615, "SN-A2-2403": 1.1, "SN-A2-2501": 1.101, "SN-A2-2502": 0.877, "SN-A2-2503": 0.824, "SN-A2-2504": 1.014, "SN-A2-2601": 0.65, "SN-A2-2602": 1.193, "SN-A2-2603": 0.555}, "2014": {"SN-A2-0103": 0.861, "SN-A2-0701": 0.741, "SN-A2-0702": 0.731, "SN-A2-0703": 0.942, "SN-A2-0801": 0.949, "SN-A2-0802": 0.76, "SN-A2-0803": 0.766, "SN-A2-1201": 1.336, "SN-A2-1202": 1.234, "SN-A2-1203": 1.274, "SN-A2-1701": 1.924, "SN-A2-1702": 3.315, "SN-A2-1801": 1.891, "SN-A2-1802": 3.33, "SN-A2-1803": 1.136, "SN-A2-1902": 0.872, "SN-A2-1903": 1.385, "SN-A2-2001": 1.378, "SN-A2-2002": 1.429, "SN-A2-2003": 1.36, "SN-A2-2101": 1.316, "SN-A2-2102": 1.381, "SN-A2-2103": 1.318, "SN-A2-2201": 1.395, "SN-A2-2202": 1.068, "SN-A2-2203": 1.147, "SN-A2-2204": 1.15, "SN-A2-2301": 1.605, "SN-A2-2302": 1.491, "SN-A2-2303": 1.13, "SN-A2-2401": 0.785, "SN-A2-2402": 0.798, "SN-A2-2403": 1.428, "SN-A2-2501": 1.469, "SN-A2-2502": 1.205, "SN-A2-2503": 1.151, "SN-A2-2504": 1.076, "SN-A2-2601": 0.849, "SN-A2-2602": 1.563, "SN-A2-2603": 0.729}, "2015": {"SN-A2-0103": 0.655, "SN-A2-0701": 0.458, "SN-A2-0702": 0.449, "SN-A2-0703": 0.684, "SN-A2-0801": 0.776, "SN-A2-0802": 0.618, "SN-A2-0803": 0.619, "SN-A2-1201": 1.273, "SN-A2-1202": 1.086, "SN-A2-1203": 1.239, "SN-A2-1701": 1.252, "SN-A2-1702": 2.61, "SN-A2-1801": 1.383, "SN-A2-1802": 2.609, "SN-A2-1803": 1.071, "SN-A2-1902": 0.686, "SN-A2-2001": 1.296, "SN-A2-2002": 1.311, "SN-A2-2003": 1.264, "SN-A2-2101": 1.236, "SN-A2-2102": 1.308, "SN-A2-2103": 1.256, "SN-A2-2201": 1.212, "SN-A2-2202": 1.026, "SN-A2-2203": 0.949, "SN-A2-2204": 1.045, "SN-A2-2301": 1.686, "SN-A2-2302": 1.567, "SN-A2-2303": 1.116, "SN-A2-2401": 0.656, "SN-A2-2402": 0.662, "SN-A2-2403": 1.253, "SN-A2-2501": 1.248, "SN-A2-2502": 0.996, "SN-A2-2503": 0.955, "SN-A2-2504": 0.8, "SN-A2-2601": 0.716, "SN-A2-2602": 1.384, "SN-A2-2603": 0.604}}, "average_yield": {"2011": {"SN-A2-0103": 0.811, "SN-A2-0701": 0.584, "SN-A2-0702": 2.1, "SN-A2-0703": 1.217, "SN-A2-0802": 0.505, "SN-A2-0803": 0.458, "SN-A2-1201": 1.403, "SN-A2-1202": 1.514, "SN-A2-1203": 1.346, "SN-A2-1902": 0.675, "SN-A2-2001": 1.847, "SN-A2-2002": 1.351, "SN-A2-2003": 1.88, "SN-A2-2101": 1.111, "SN-A2-2102": 1.18, "SN-A2-2103": 1.141, "SN-A2-2201": 1.007, "SN-A2-2202": 0.898, "SN-A2-2203": 0.899, "SN-A2-2204": 0.814, "SN-A2-2301": 1.634, "SN-A2-2302": 1.63, "SN-A2-2303": 1.588, "SN-A2-2401": 0.58, "SN-A2-2402": 1.375, "SN-A2-2403": 1.966, "SN-A2-2501": 1.464, "SN-A2-2502": 1.502, "SN-A2-2503": 1.357, "SN-A2-2504": 1.587, "SN-A2-2601": 0.751, "SN-A2-2602": 1.502, "SN-A2-2603": 0.66}, "2012": {"SN-A2-0103": 0.818, "SN-A2-0701": 0.575, "SN-A2-0702": 1.65, "SN-A2-0703": 1.024, "SN-A2-0801": 0.462, "SN-A2-0802": 0.481, "SN-A2-0803": 0.48, "SN-A2-1201": 1.281, "SN-A2-1202": 1.419, "SN-A2-1203": 0.931, "SN-A2-1701": 3.498, "SN-A2-1702": 3.5, "SN-A2-1801": 0.86, "SN-A2-1803": 0.896, "SN-A2-1902": 0.656, "SN-A2-1903": 3.498, "SN-A2-2001": 1.793, "SN-A2-2002": 1.311, "SN-A2-2003": 1.825, "SN-A2-2101": 1.075, "SN-A2-2102": 1.14, "SN-A2-2103": 1.106, "SN-A2-2201": 0.957, "SN-A2-2202": 0.86, "SN-A2-2203": 0.896, "SN-A2-2204": 0.796, "SN-A2-2301": 1.658, "SN-A2-2302": 1.563, "SN-A2-2303": 1.481, "SN-A2-2401": 0.571, "SN-A2-2402": 1.289, "SN-A2-2403": 1.954, "SN-A2-2501": 1.366, "SN-A2-2502": 1.397, "SN-A2-2503": 1.243, "SN-A2-2504": 1.568, "SN-A2-2601": 0.749, "SN-A2-2602": 1.495, "SN-A2-2603": 0.673}, "2013": {"SN-A2-0103": 0.804, "SN-A2-0701": 0.56, "SN-A2-0702": 1.44, "SN-A2-0703": 0.949, "SN-A2-0801": 0.489, "SN-A2-0802": 0.484, "SN-A2-0803": 0.513, "SN-A2-1201": 1.234, "SN-A2-1202": 1.464, "SN-A2-1203": 0.91, "SN-A2-1701": 3.448, "SN-A2-1702": 3.45, "SN-A2-1902": 0.667, "SN-A2-2001": 1.82, "SN-A2-2002": 1.446, "SN-A2-2003": 1.849, "SN-A2-2101": 1.108, "SN-A2-2102": 1.193, "SN-A2-2103": 1.121, "SN-A2-2201": 1.041, "SN-A2-2202": 0.871, "SN-A2-2203": 0.888, "SN-A2-2204": 0.796, "SN-A2-2301": 1.656, "SN-A2-2302": 1.574, "SN-A2-2303": 1.477, "SN-A2-2401": 0.572, "SN-A2-2402": 1.273, "SN-A2-2403": 1.935, "SN-A2-2501": 1.368, "SN-A2-2502": 1.392, "SN-A2-2503": 1.291, "SN-A2-2504": 1.543, "SN-A2-2601": 0.785, "SN-A2-2602": 1.56, "SN-A2-2603": 0.685}, "2014": {"SN-A2-0103": 0.804, "SN-A2-0701": 0.567, "SN-A2-0702": 1.283, "SN-A2-0703": 0.891, "SN-A2-0801": 0.473, "SN-A2-0802": 0.485, "SN-A2-0803": 0.528, "SN-A2-1201": 1.2, "SN-A2-1202": 1.41, "SN-A2-1203": 0.866, "SN-A2-1701": 3.29, "SN-A2-1702": 3.292, "SN-A2-1801": 3.86, "SN-A2-1802": 3.86, "SN-A2-1803": 0.875, "SN-A2-1902": 0.684, "SN-A2-1903": 0.7, "SN-A2-2001": 1.868, "SN-A2-2002": 1.472, "SN-A2-2003": 1.888, "SN-A2-2101": 1.129, "SN-A2-2102": 1.212, "SN-A2-2103": 1.199, "SN-A2-2201": 1.062, "SN-A2-2202": 0.877, "SN-A2-2203": 0.92, "SN-A2-2204": 0.82, "SN-A2-2301": 1.678, "SN-A2-2302": 1.601, "SN-A2-2303": 1.511, "SN-A2-2401": 0.603, "SN-A2-2402": 1.217, "SN-A2-2403": 2.011, "SN-A2-2501": 1.399, "SN-A2-2502": 1.386, "SN-A2-2503": 1.272, "SN-A2-2504": 1.465, "SN-A2-2601": 0.873, "SN-A2-2602": 1.533, "SN-A2-2603": 0.697}, "2015": {"SN-A2-0103": 0.793, "SN-A2-0701": 0.579, "SN-A2-0702": 1.178, "SN-A2-0703": 0.828, "SN-A2-0801": 0.461, "SN-A2-0802": 0.478, "SN-A2-0803": 0.518, "SN-A2-1201": 1.2, "SN-A2-1202": 1.359, "SN-A2-1203": 0.933, "SN-A2-1701": 3.177, "SN-A2-1702": 3.179, "SN-A2-1801": 2.38, "SN-A2-1802": 0.5, "SN-A2-1803": 0.762, "SN-A2-1902": 0.67, "SN-A2-2001": 1.791, "SN-A2-2002": 1.453, "SN-A2-2003": 1.85, "SN-A2-2101": 1.169, "SN-A2-2102": 1.254, "SN-A2-2103": 1.237, "SN-A2-2201": 1.065, "SN-A2-2202": 0.893, "SN-A2-2203": 0.933, "SN-A2-2204": 0.833, "SN-A2-2301": 1.683, "SN-A2-2302": 1.609, "SN-A2-2303": 1.521, "SN-A2-2401": 0.613, "SN-A2-2402": 1.175, "SN-A2-2403": 1.96, "SN-A2-2501": 1.359, "SN-A2-2502": 1.357, "SN-A2-2503": 1.26, "SN-A2-2504": 1.413, "SN-A2-2601": 0.843, "SN-A2-2602": 1.524, "SN-A2-2603": 0.683}}, "cnn_lf": {"2011": {"SN-A2-0103": 0.703, "SN-A2-0701": 0.757, "SN-A2-0702": 1.148, "SN-A2-0703": 0.951, "SN-A2-0802": 0.388, "SN-A2-0803": 0.384, "SN-A2-1201": 1.248, "SN-A2-1202": 1.142, "SN-A2-1203": 1.222, "SN-A2-1902": 1.024, "SN-A2-2001": 1.198, "SN-A2-2002": 1.216, "SN-A2-2003": 1.206, "SN-A2-2101": 1.221, "SN-A2-2102": 1.252, "SN-A2-2103": 1.21, "SN-A2-2201": 1.456, "SN-A2-2202": 1.16, "SN-A2-2203": 1.33, "SN-A2-2204": 1.204, "SN-A2-2301": 1.515, "SN-A2-2302": 1.454, "SN-A2-2303": 1.597, "SN-A2-2401": 0.985, "SN-A2-2402": 0.974, "SN-A2-2403": 1.473, "SN-A2-2501": 1.475, "SN-A2-2502": 1.432, "SN-A2-2503": 1.374, "SN-A2-2504": 1.288, "SN-A2-2601": 0.638, "SN-A2-2602": 1.438, "SN-A2-2603": 0.717}, "2012": {"SN-A2-0103": 0.381, "SN-A2-0701": 0.403, "SN-A2-0702": 0.474, "SN-A2-0703": 0.438, "SN-A2-0801": 0.506, "SN-A2-0802": 0.573, "SN-A2-0803": 0.58, "SN-A2-1201": 1.481, "SN-A2-1202": 1.188, "SN-A2-1203": 1.472, "SN-A2-1701": 1.509, "SN-A2-1702": 2.008, "SN-A2-1801": 0.986, "SN-A2-1803": 0.794, "SN-A2-1902": 0.681, "SN-A2-1903": 0.921, "SN-A2-2001": 1.434, "SN-A2-2002": 1.477, "SN-A2-2003": 1.468, "SN-A2-2101": 1.503, "SN-A2-2102": 1.431, "SN-A2-2103": 1.528, "SN-A2-2201": 1.085, "SN-A2-2202": 0.976, "SN-A2-2203": 1.065, "SN-A2-2204": 0.99, "SN-A2-2301": 1.265, "SN-A2-2302": 1.214, "SN-A2-2303": 1.185, "SN-A2-2401": 0.808, "SN-A2-2402": 0.753, "SN-A2-2403": 1.315, "SN-A2-2501": 1.159, "SN-A2-2502": 1.109, "SN-A2-2503": 1.096, "SN-A2-2504": 0.87, "SN-A2-2601": 0.609, "SN-A2-2602": 1.269, "SN-A2-2603": 0.774}, "2013": {"SN-A2-0103": 1.289, "SN-A2-0701": 1.31, "SN-A2-0702": 3.024, "SN-A2-0703": 2.37, "SN-A2-0801": 1.026, "SN-A2-0802": 0.827, "SN-A2-0803": 0.789, "SN-A2-1201": 1.318, "SN-A2-1202": 1.494, "SN-A2-1203": 1.304, "SN-A2-1701": 3.483, "SN-A2-1702": 3.654, "SN-A2-1902": 0.915, "SN-A2-2001": 1.335, "SN-A2-2002": 1.384, "SN-A2-2003": 1.371, "SN-A2-2101": 1.392, "SN-A2-2102": 1.295, "SN-A2-2103": 1.328, "SN-A2-2201": 1.44, "SN-A2-2202": 1.169, "SN-A2-2203": 1.291, "SN-A2-2204": 1.304, "SN-A2-2301": 1.578, "SN-A2-2302": 1.562, "SN-A2-2303": 1.734, "SN-A2-2401": 1.094, "SN-A2-2402": 1.118, "SN-A2-2403": 1.571, "SN-A2-2501": 1.544, "SN-A2-2502": 1.494, "SN-A2-2503": 1.345, "SN-A2-2504": 1.306, "SN-A2-2601": 1.157, "SN-A2-2602": 1.607, "SN-A2-2603": 1.022}, "2014": {"SN-A2-0103": 0.571, "SN-A2-0701": 0.276, "SN-A2-0702": 0.593, "SN-A2-0703": 0.484, "SN-A2-0801": 0.373, "SN-A2-0802": 0.487, "SN-A2-0803": 0.546, "SN-A2-1201": 1.163, "SN-A2-1202": 0.934, "SN-A2-1203": 1.16, "SN-A2-1701": 2.075, "SN-A2-1702": 3.794, "SN-A2-1801": 1.255, "SN-A2-1802": 3.687, "SN-A2-1803": 1.005, "SN-A2-1902": 0.809, "SN-A2-1903": 0.737, "SN-A2-2001": 1.16, "SN-A2-2002": 1.162, "SN-A2-2003": 1.197, "SN-A2-2101": 1.229, "SN-A2-2102": 1.189, "SN-A2-2103": 1.201, "SN-A2-2201": 1.216, "SN-A2-2202": 0.967, "SN-A2-2203": 1.17, "SN-A2-2204": 0.969, "SN-A2-2301": 1.111, "SN-A2-2302": 1.091, "SN-A2-2303": 1.18, "SN-A2-2401": 1.021, "SN-A2-2402": 0.995, "SN-A2-2403": 1.384, "SN-A2-2501": 1.353, "SN-A2-2502": 1.277, "SN-A2-2503": 1.222, "SN-A2-2504": 1.062, "SN-A2-2601": 0.567, "SN-A2-2602": 1.246, "SN-A2-2603": 0.962}, "2015": {"SN-A2-0103": 1.167, "SN-A2-0701": 1.209, "SN-A2-0702": 2.724, "SN-A2-0703": 2.009, "SN-A2-0801": 0.734, "SN-A2-0802": 0.657, "SN-A2-0803": 0.651, "SN-A2-1201": 1.095, "SN-A2-1202": 1.183, "SN-A2-1203": 1.076, "SN-A2-1701": 3.467, "SN-A2-1702": 3.497, "SN-A2-1801": 1.18, "SN-A2-1802": 3.262, "SN-A2-1803": 0.805, "SN-A2-1902": 0.734, "SN-A2-2001": 1.135, "SN-A2-2002": 1.1, "SN-A2-2003": 1.115, "SN-A2-2101": 1.127, "SN-A2-2102": 1.146, "SN-A2-2103": 1.095, "SN-A2-2201": 1.202, "SN-A2-2202": 0.877, "SN-A2-2203": 1.029, "SN-A2-2204": 0.964, "SN-A2-2301": 1.353, "SN-A2-2302": 1.319, "SN-A2-2303": 1.745, "SN-A2-2401": 0.775, "SN-A2-2402": 0.781, "SN-A2-2403": 1.47, "SN-A2-2501": 1.312, "SN-A2-2502": 1.23, "SN-A2-2503": 1.061, "SN-A2-2504": 0.967, "SN-A2-2601": 0.753, "SN-A2-2602": 1.543, "SN-A2-2603": 0.699}}, "dlinear_lf": {"2011": {"SN-A2-0103": 1.153, "SN-A2-0701": 1.378, "SN-A2-0702": 2.384, "SN-A2-0703": 1.786, "SN-A2-0802": 0.705, "SN-A2-0803": 0.708, "SN-A2-1201": 1.07, "SN-A2-1202": 1.499, "SN-A2-1203": 1.88, "SN-A2-1902": 0.827, "SN-A2-2001": 1.979, "SN-A2-2002": 1.737, "SN-A2-2003": 1.74, "SN-A2-2101": 1.827, "SN-A2-2102": 1.914, "SN-A2-2103": 1.525, "SN-A2-2201": 1.508, "SN-A2-2202": 1.12, "SN-A2-2203": 1.083, "SN-A2-2204": 1.338, "SN-A2-2301": 1.833, "SN-A2-2302": 1.638, "SN-A2-2303": 1.854, "SN-A2-2401": 1.1, "SN-A2-2402": 1.014, "SN-A2-2403": 1.627, "SN-A2-2501": 1.735, "SN-A2-2502": 1.555, "SN-A2-2503": 1.161, "SN-A2-2504": 1.254, "SN-A2-2601": 1.275, "SN-A2-2602": 1.668, "SN-A2-2603": 1.019}, "2012": {"SN-A2-0103": 0.943, "SN-A2-0701": 0.612, "SN-A2-0702": 0.953, "SN-A2-0703": 0.769, "SN-A2-0801": 0.35, "SN-A2-0802": 0.38, "SN-A2-0803": 0.342, "SN-A2-1201": 1.153, "SN-A2-1202": 1.591, "SN-A2-1203": 0.482, "SN-A2-1701": 2.97, "SN-A2-1702": 3.05, "SN-A2-1801": 0.719, "SN-A2-1803": 0.368, "SN-A2-1902": 0.432, "SN-A2-1903": 0.586, "SN-A2-2001": 1.289, "SN-A2-2002": 1.048, "SN-A2-2003": 0.975, "SN-A2-2101": 1.191, "SN-A2-2102": 1.386, "SN-A2-2103": 0.777, "SN-A2-2201": 1.216, "SN-A2-2202": 0.822, "SN-A2-2203": 0.842, "SN-A2-2204": 1.02, "SN-A2-2301": 0.671, "SN-A2-2302": 0.846, "SN-A2-2303": 1.153, "SN-A2-2401": 0.425, "SN-A2-2402": 0.559, "SN-A2-2403": 1.009, "SN-A2-2501": 0.99, "SN-A2-2502": 0.615, "SN-A2-2503": 0.546, "SN-A2-2504": 0.581, "SN-A2-2601": 0.47, "SN-A2-2602": 0.851, "SN-A2-2603": 0.388}, "2013": {"SN-A2-0103": 0.893, "SN-A2-0701": 0.712, "SN-A2-0702": 0.727, "SN-A2-0703": 1.006, "SN-A2-0801": 0.554, "SN-A2-0802": 0.403, "SN-A2-0803": 0.365, "SN-A2-1201": 1.461, "SN-A2-1202": 1.969, "SN-A2-1203": 1.524, "SN-A2-1701": 3.84, "SN-A2-1702": 3.98, "SN-A2-1902": 0.471, "SN-A2-2001": 2.03, "SN-A2-2002": 1.976, "SN-A2-2003": 1.557, "SN-A2-2101": 2.022, "SN-A2-2102": 1.645, "SN-A2-2103": 1.941, "SN-A2-2201": 1.455, "SN-A2-2202": 0.893, "SN-A2-2203": 0.675, "SN-A2-2204": 1.228, "SN-A2-2301": 1.795, "SN-A2-2302": 1.756, "SN-A2-2303": 1.733, "SN-A2-2401": 0.804, "SN-A2-2402": 1.083, "SN-A2-2403": 1.738, "SN-A2-2501": 0.821, "SN-A2-2502": 1.13, "SN-A2-2503": 0.862, "SN-A2-2504": 1.015, "SN-A2-2601": 0.785, "SN-A2-2602": 2.15, "SN-A2-2603": 0.67}, "2014": {"SN-A2-0103": 0.718, "SN-A2-0701": 0.385, "SN-A2-0702": 0.567, "SN-A2-0703": 1.913, "SN-A2-0801": 0.773, "SN-A2-0802": 0.695, "SN-A2-0803": 0.922, "SN-A2-1201": 0.565, "SN-A2-1202": 0.69, "SN-A2-1203": 0.71, "SN-A2-1701": 3.293, "SN-A2-1702": 3.231, "SN-A2-1801": 1.374, "SN-A2-1802": 3.649, "SN-A2-1803": 0.479, "SN-A2-1902": 1.227, "SN-A2-1903": 0.785, "SN-A2-2001": 0.398, "SN-A2-2002": 0.471, "SN-A2-2003": 0.753, "SN-A2-2101": 0.451, "SN-A2-2102": 0.742, "SN-A2-2103": 0.587, "SN-A2-2201": 0.651, "SN-A2-2202": 0.851, "SN-A2-2203": 0.848, "SN-A2-2204": 0.953, "SN-A2-2301": 1.129, "SN-A2-2302": 0.811, "SN-A2-2303": 0.914, "SN-A2-2401": 0.738, "SN-A2-2402": 0.805, "SN-A2-2403": 1.286, "SN-A2-2501": 1.023, "SN-A2-2502": 1.252, "SN-A2-2503": 0.866, "SN-A2-2504": 1.094, "SN-A2-2601": 0.722, "SN-A2-2602": 0.986, "SN-A2-2603": 0.719}, "2015": {"SN-A2-0103": 0.857, "SN-A2-0701": 0.797, "SN-A2-0702": 1.212, "SN-A2-0703": 0.839, "SN-A2-0801": 0.558, "SN-A2-0802": 0.507, "SN-A2-0803": 0.381, "SN-A2-1201": 1.131, "SN-A2-1202": 1.392, "SN-A2-1203": 0.685, "SN-A2-1701": 2.255, "SN-A2-1702": 2.983, "SN-A2-1801": 1.887, "SN-A2-1802": 2.884, "SN-A2-1803": 0.889, "SN-A2-1902": 0.546, "SN-A2-2001": 1.605, "SN-A2-2002": 1.61, "SN-A2-2003": 1.608, "SN-A2-2101": 1.502, "SN-A2-2102": 0.765, "SN-A2-2103": 1.137, "SN-A2-2201": 1.433, "SN-A2-2202": 0.913, "SN-A2-2203": 1.103, "SN-A2-2204": 1.01, "SN-A2-2301": 1.827, "SN-A2-2302": 1.625, "SN-A2-2303": 1.479, "SN-A2-2401": 0.767, "SN-A2-2402": 0.858, "SN-A2-2403": 1.721, "SN-A2-2501": 1.158, "SN-A2-2502": 1.448, "SN-A2-2503": 1.346, "SN-A2-2504": 0.994, "SN-A2-2601": 0.706, "SN-A2-2602": 1.832, "SN-A2-2603": 0.696}}, "informer_lf": {"2011": {"SN-A2-0103": 0.467, "SN-A2-0701": 0.337, "SN-A2-0702": 0.869, "SN-A2-0703": 0.958, "SN-A2-0802": 0.185, "SN-A2-0803": 0.184, "SN-A2-1201": 0.845, "SN-A2-1202": 1.396, "SN-A2-1203": 1.342, "SN-A2-1902": 0.208, "SN-A2-2001": 1.28, "SN-A2-2002": 1.011, "SN-A2-2003": 0.706, "SN-A2-2101": 0.674, "SN-A2-2102": 1.282, "SN-A2-2103": 1.082, "SN-A2-2201": 0.801, "SN-A2-2202": 0.438, "SN-A2-2203": 0.467, "SN-A2-2204": 0.48, "SN-A2-2301": 1.324, "SN-A2-2302": 1.194, "SN-A2-2303": 1.147, "SN-A2-2401": 0.193, "SN-A2-2402": 0.206, "SN-A2-2403": 0.701, "SN-A2-2501": 0.547, "SN-A2-2502": 0.478, "SN-A2-2503": 0.415, "SN-A2-2504": 0.251, "SN-A2-2601": 0.223, "SN-A2-2602": 0.851, "SN-A2-2603": 0.176}, "2012": {"SN-A2-0103": 0.507, "SN-A2-0701": 0.222, "SN-A2-0702": 0.282, "SN-A2-0703": 0.286, "SN-A2-0801": 0.381, "SN-A2-0802": 0.389, "SN-A2-0803": 0.438, "SN-A2-1201": 0.962, "SN-A2-1202": 1.086, "SN-A2-1203": 0.887, "SN-A2-1701": 2.799, "SN-A2-1702": 3.453, "SN-A2-1801": 0.716, "SN-A2-1803": 0.586, "SN-A2-1902": 0.579, "SN-A2-1903": 0.589, "SN-A2-2001": 1.077, "SN-A2-2002": 0.674, "SN-A2-2003": 1.056, "SN-A2-2101": 1.046, "SN-A2-2102": 1.035, "SN-A2-2103": 1.013, "SN-A2-2201": 0.648, "SN-A2-2202": 0.564, "SN-A2-2203": 0.74, "SN-A2-2204": 0.623, "SN-A2-2301": 1.437, "SN-A2-2302": 1.36, "SN-A2-2303": 0.556, "SN-A2-2401": 0.428, "SN-A2-2402": 0.666, "SN-A2-2403": 1.483, "SN-A2-2501": 0.996, "SN-A2-2502": 1.232, "SN-A2-2503": 0.849, "SN-A2-2504": 0.848, "SN-A2-2601": 0.686, "SN-A2-2602": 1.582, "SN-A2-2603": 0.425}, "2013": {"SN-A2-0103": 0.649, "SN-A2-0701": 0.495, "SN-A2-0702": 0.828, "SN-A2-0703": 0.881, "SN-A2-0801": 0.669, "SN-A2-0802": 0.613, "SN-A2-0803": 0.588, "SN-A2-1201": 1.056, "SN-A2-1202": 1.431, "SN-A2-1203": 1.263, "SN-A2-1701": 3.29, "SN-A2-1702": 3.551, "SN-A2-1902": 0.647, "SN-A2-2001": 1.297, "SN-A2-2002": 1.126, "SN-A2-2003": 0.979, "SN-A2-2101": 1.041, "SN-A2-2102": 1.21, "SN-A2-2103": 0.996, "SN-A2-2201": 1.072, "SN-A2-2202": 0.711, "SN-A2-2203": 0.779, "SN-A2-2204": 1.159, "SN-A2-2301": 1.691, "SN-A2-2302": 1.604, "SN-A2-2303": 1.181, "SN-A2-2401": 0.637, "SN-A2-2402": 0.828, "SN-A2-2403": 1.258, "SN-A2-2501": 1.161, "SN-A2-2502": 1.113, "SN-A2-2503": 0.863, "SN-A2-2504": 1.52, "SN-A2-2601": 0.909, "SN-A2-2602": 1.816, "SN-A2-2603": 0.594}, "2014": {"SN-A2-0103": 0.769, "SN-A2-0701": 0.901, "SN-A2-0702": 0.785, "SN-A2-0703": 0.769, "SN-A2-0801": 0.933, "SN-A2-0802": 0.876, "SN-A2-0803": 0.885, "SN-A2-1201": 0.927, "SN-A2-1202": 1.209, "SN-A2-1203": 1.07, "SN-A2-1701": 2.496, "SN-A2-1702": 3.126, "SN-A2-1801": 2.109, "SN-A2-1802": 3.036, "SN-A2-1803": 1.38, "SN-A2-1902": 1.068, "SN-A2-1903": 1.01, "SN-A2-2001": 1.813, "SN-A2-2002": 1.695, "SN-A2-2003": 1.528, "SN-A2-2101": 1.128, "SN-A2-2102": 1.206, "SN-A2-2103": 1.126, "SN-A2-2201": 1.635, "SN-A2-2202": 1.193, "SN-A2-2203": 1.097, "SN-A2-2204": 1.479, "SN-A2-2301": 2.071, "SN-A2-2302": 2.037, "SN-A2-2303": 1.674, "SN-A2-2401": 0.963, "SN-A2-2402": 1.001, "SN-A2-2403": 1.267, "SN-A2-2501": 1.228, "SN-A2-2502": 1.2, "SN-A2-2503": 1.166, "SN-A2-2504": 1.499, "SN-A2-2601": 0.99, "SN-A2-2602": 1.336, "SN-A2-2603": 0.911}, "2015": {"SN-A2-0103": 0.911, "SN-A2-0701": 0.65, "SN-A2-0702": 0.729, "SN-A2-0703": 0.796, "SN-A2-0801": 0.814, "SN-A2-0802": 0.783, "SN-A2-0803": 0.747, "SN-A2-1201": 1.504, "SN-A2-1202": 1.259, "SN-A2-1203": 1.396, "SN-A2-1701": 1.942, "SN-A2-1702": 2.619, "SN-A2-1801": 1.585, "SN-A2-1802": 1.004, "SN-A2-1803": 1.077, "SN-A2-1902": 0.986, "SN-A2-2001": 1.611, "SN-A2-2002": 1.605, "SN-A2-2003": 1.626, "SN-A2-2101": 1.589, "SN-A2-2102": 1.598, "SN-A2-2103": 1.558, "SN-A2-2201": 1.559, "SN-A2-2202": 1.3, "SN-A2-2203": 1.791, "SN-A2-2204": 1.461, "SN-A2-2301": 1.634, "SN-A2-2302": 1.582, "SN-A2-2303": 1.365, "SN-A2-2401": 1.185, "SN-A2-2402": 1.145, "SN-A2-2403": 1.839, "SN-A2-2501": 1.913, "SN-A2-2502": 1.82, "SN-A2-2503": 1.82, "SN-A2-2504": 1.553, "SN-A2-2601": 0.986, "SN-A2-2602": 1.473, "SN-A2-2603": 1.152}}, "lightgbm": {"2011": {"SN-A2-0103": 0.868, "SN-A2-0701": 1.01, "SN-A2-0702": 2.17, "SN-A2-0703": 1.246, "SN-A2-0802": 0.439, "SN-A2-0803": 0.5, "SN-A2-1201": 1.046, "SN-A2-1202": 1.687, "SN-A2-1203": 1.147, "SN-A2-1902": 0.833, "SN-A2-2001": 1.491, "SN-A2-2002": 0.865, "SN-A2-2003": 1.804, "SN-A2-2101": 1.502, "SN-A2-2102": 1.357, "SN-A2-2103": 1.548, "SN-A2-2201": 1.589, "SN-A2-2202": 1.141, "SN-A2-2203": 1.093, "SN-A2-2204": 1.129, "SN-A2-2301": 1.41, "SN-A2-2302": 1.412, "SN-A2-2303": 1.833, "SN-A2-2401": 0.544, "SN-A2-2402": 0.991, "SN-A2-2403": 1.55, "SN-A2-2501": 1.391, "SN-A2-2502": 1.489, "SN-A2-2503": 1.099, "SN-A2-2504": 1.116, "SN-A2-2601": 0.387, "SN-A2-2602": 1.362, "SN-A2-2603": 0.724}, "2012": {"SN-A2-0103": 1.444, "SN-A2-0701": 1.51, "SN-A2-0702": 1.951, "SN-A2-0703": 1.664, "SN-A2-0801": 1.442, "SN-A2-0802": 1.268, "SN-A2-0803": 0.694, "SN-A2-1201": 1.577, "SN-A2-1202": 2.065, "SN-A2-1203": 1.405, "SN-A2-1701": 3.504, "SN-A2-1702": 3.386, "SN-A2-1801": 0.862, "SN-A2-1803": 1.693, "SN-A2-1902": 1.294, "SN-A2-1903": 0.797, "SN-A2-2001": 1.676, "SN-A2-2002": 0.949, "SN-A2-2003": 0.927, "SN-A2-2101": 1.202, "SN-A2-2102": 1.052, "SN-A2-2103": 1.067, "SN-A2-2201": 0.902, "SN-A2-2202": 1.076, "SN-A2-2203": 0.748, "SN-A2-2204": 0.796, "SN-A2-2301": 0.996, "SN-A2-2302": 1.325, "SN-A2-2303": 2.039, "SN-A2-2401": 1.187, "SN-A2-2402": 1.288, "SN-A2-2403": 2.128, "SN-A2-2501": 1.953, "SN-A2-2502": 1.917, "SN-A2-2503": 1.499, "SN-A2-2504": 1.424, "SN-A2-2601": 1.691, "SN-A2-2602": 1.957, "SN-A2-2603": 1.016}, "2013": {"SN-A2-0103": 0.914, "SN-A2-0701": 1.228, "SN-A2-0702": 1.588, "SN-A2-0703": 1.134, "SN-A2-0801": 0.489, "SN-A2-0802": 0.613, "SN-A2-0803": 0.61, "SN-A2-1201": 0.969, "SN-A2-1202": 1.83, "SN-A2-1203": 0.517, "SN-A2-1701": 3.472, "SN-A2-1702": 3.37, "SN-A2-1902": 0.621, "SN-A2-2001": 1.636, "SN-A2-2002": 1.148, "SN-A2-2003": 1.254, "SN-A2-2101": 1.46, "SN-A2-2102": 1.159, "SN-A2-2103": 1.043, "SN-A2-2201": 0.95, "SN-A2-2202": 0.968, "SN-A2-2203": 0.911, "SN-A2-2204": 0.557, "SN-A2-2301": 1.804, "SN-A2-2302": 1.547, "SN-A2-2303": 1.208, "SN-A2-2401": 0.759, "SN-A2-2402": 1.138, "SN-A2-2403": 1.841, "SN-A2-2501": 1.671, "SN-A2-2502": 1.234, "SN-A2-2503": 1.225, "SN-A2-2504": 1.652, "SN-A2-2601": 0.458, "SN-A2-2602": 1.792, "SN-A2-2603": 0.696}, "2014": {"SN-A2-0103": 0.704, "SN-A2-0701": 0.693, "SN-A2-0702": 1.326, "SN-A2-0703": 0.74, "SN-A2-0801": 0.574, "SN-A2-0802": 0.578, "SN-A2-0803": 0.495, "SN-A2-1201": 1.297, "SN-A2-1202": 1.242, "SN-A2-1203": 1.025, "SN-A2-1701": 2.561, "SN-A2-1702": 3.24, "SN-A2-1801": 1.569, "SN-A2-1802": 2.958, "SN-A2-1803": 1.0, "SN-A2-1902": 0.845, "SN-A2-1903": 1.001, "SN-A2-2001": 1.358, "SN-A2-2002": 2.087, "SN-A2-2003": 1.483, "SN-A2-2101": 0.658, "SN-A2-2102": 1.205, "SN-A2-2103": 0.867, "SN-A2-2201": 1.484, "SN-A2-2202": 1.141, "SN-A2-2203": 1.002, "SN-A2-2204": 1.603, "SN-A2-2301": 1.724, "SN-A2-2302": 1.699, "SN-A2-2303": 2.203, "SN-A2-2401": 0.45, "SN-A2-2402": 0.859, "SN-A2-2403": 1.299, "SN-A2-2501": 1.075, "SN-A2-2502": 0.889, "SN-A2-2503": 1.511, "SN-A2-2504": 1.483, "SN-A2-2601": 0.839, "SN-A2-2602": 1.525, "SN-A2-2603": 0.712}, "2015": {"SN-A2-0103": 0.709, "SN-A2-0701": 0.827, "SN-A2-0702": 1.138, "SN-A2-0703": 1.01, "SN-A2-0801": 0.211, "SN-A2-0802": 0.371, "SN-A2-0803": 0.468, "SN-A2-1201": 1.68, "SN-A2-1202": 0.883, "SN-A2-1203": 1.143, "SN-A2-1701": 2.966, "SN-A2-1702": 3.161, "SN-A2-1801": 0.64, "SN-A2-1802": 1.805, "SN-A2-1803": 1.073, "SN-A2-1902": 0.925, "SN-A2-2001": 1.07, "SN-A2-2002": 1.393, "SN-A2-2003": 1.292, "SN-A2-2101": 1.181, "SN-A2-2102": 1.246, "SN-A2-2103": 1.327, "SN-A2-2201": 1.303, "SN-A2-2202": 0.826, "SN-A2-2203": 1.11, "SN-A2-2204": 0.799, "SN-A2-2301": 1.553, "SN-A2-2302": 1.541, "SN-A2-2303": 1.725, "SN-A2-2401": 0.772, "SN-A2-2402": 0.755, "SN-A2-2403": 1.725, "SN-A2-2501": 1.01, "SN-A2-2502": 0.774, "SN-A2-2503": 0.751, "SN-A2-2504": 0.947, "SN-A2-2601": 0.649, "SN-A2-2602": 1.456, "SN-A2-2603": 0.568}}, "lpjml_bc": {"2011": {"SN-A2-0103": 1.053, "SN-A2-0701": 0.52, "SN-A2-0702": 1.094, "SN-A2-0703": 0.955, "SN-A2-0802": 0.238, "SN-A2-0803": 0.238, "SN-A2-1201": 1.239, "SN-A2-1202": 0.238, "SN-A2-1203": 0.269, "SN-A2-1902": 0.238, "SN-A2-2001": 2.385, "SN-A2-2002": 0.404, "SN-A2-2003": 3.044, "SN-A2-2101": 1.169, "SN-A2-2102": 1.31, "SN-A2-2103": 1.266, "SN-A2-2201": 0.238, "SN-A2-2202": 0.133, "SN-A2-2203": 0.52, "SN-A2-2204": 0.214, "SN-A2-2301": 0.238, "SN-A2-2302": 0.238, "SN-A2-2303": 0.377, "SN-A2-2401": 0.464, "SN-A2-2402": 1.845, "SN-A2-2403": 2.011, "SN-A2-2501": 2.027, "SN-A2-2502": 0.992, "SN-A2-2503": 0.786, "SN-A2-2504": 0.594, "SN-A2-2601": 0.927, "SN-A2-2602": 1.831, "SN-A2-2603": 0.562}, "2012": {"SN-A2-0103": 1.2, "SN-A2-0701": 0.511, "SN-A2-0702": 1.118, "SN-A2-0703": 0.971, "SN-A2-0801": 0.213, "SN-A2-0802": 0.213, "SN-A2-0803": 0.213, "SN-A2-1201": 1.194, "SN-A2-1202": 0.213, "SN-A2-1203": 0.244, "SN-A2-1701": 0.675, "SN-A2-1702": 0.213, "SN-A2-1801": 0.213, "SN-A2-1803": 0.213, "SN-A2-1902": 0.213, "SN-A2-1903": 0.768, "SN-A2-2001": 2.792, "SN-A2-2002": 2.382, "SN-A2-2003": 3.032, "SN-A2-2101": 1.174, "SN-A2-2102": 1.119, "SN-A2-2103": 1.136, "SN-A2-2201": 0.213, "SN-A2-2202": 1.336, "SN-A2-2203": 1.535, "SN-A2-2204": 1.302, "SN-A2-2301": 0.213, "SN-A2-2302": 0.213, "SN-A2-2303": 0.367, "SN-A2-2401": 0.97, "SN-A2-2402": 2.007, "SN-A2-2403": 2.072, "SN-A2-2501": 2.111, "SN-A2-2502": 1.88, "SN-A2-2503": 2.234, "SN-A2-2504": 2.088, "SN-A2-2601": 0.989, "SN-A2-2602": 2.28, "SN-A2-2603": 1.059}, "2013": {"SN-A2-0103": 1.205, "SN-A2-0701": 0.55, "SN-A2-0702": 1.178, "SN-A2-0703": 1.026, "SN-A2-0801": 0.241, "SN-A2-0802": 0.241, "SN-A2-0803": 0.241, "SN-A2-1201": 1.179, "SN-A2-1202": 0.241, "SN-A2-1203": 0.27, "SN-A2-1701": 3.635, "SN-A2-1702": 0.241, "SN-A2-1902": 0.241, "SN-A2-2001": 1.11, "SN-A2-2002": 0.206, "SN-A2-2003": 1.831, "SN-A2-2101": 1.06, "SN-A2-2102": 1.201, "SN-A2-2103": 1.124, "SN-A2-2201": 0.241, "SN-A2-2202": 0.496, "SN-A2-2203": 1.226, "SN-A2-2204": 0.589, "SN-A2-2301": 0.241, "SN-A2-2302": 0.241, "SN-A2-2303": 0.379, "SN-A2-2401": 0.646, "SN-A2-2402": 1.898, "SN-A2-2403": 1.998, "SN-A2-2501": 2.031, "SN-A2-2502": 0.951, "SN-A2-2503": 0.776, "SN-A2-2504": 1.114, "SN-A2-2601": 0.955, "SN-A2-2602": 1.933, "SN-A2-2603": 0.764}, "2014": {"SN-A2-0103": 0.299, "SN-A2-0701": 0.436, "SN-A2-0702": 0.785, "SN-A2-0703": 0.701, "SN-A2-0801": 0.265, "SN-A2-0802": 0.265, "SN-A2-0803": 0.265, "SN-A2-1201": 1.203, "SN-A2-1202": 0.265, "SN-A2-1203": 0.293, "SN-A2-1701": 2.958, "SN-A2-1702": 0.265, "SN-A2-1801": 0.265, "SN-A2-1802": 0.265, "SN-A2-1803": 0.265, "SN-A2-1902": 0.265, "SN-A2-1903": 0.341, "SN-A2-2001": 2.209, "SN-A2-2002": 0.698, "SN-A2-2003": 1.683, "SN-A2-2101": 1.104, "SN-A2-2102": 1.14, "SN-A2-2103": 1.131, "SN-A2-2201": 0.265, "SN-A2-2202": 0.784, "SN-A2-2203": 1.282, "SN-A2-2204": 1.02, "SN-A2-2301": 0.265, "SN-A2-2302": 0.265, "SN-A2-2303": 0.391, "SN-A2-2401": -0.295, "SN-A2-2402": 1.439, "SN-A2-2403": 1.786, "SN-A2-2501": 1.791, "SN-A2-2502": 0.167, "SN-A2-2503": 0.473, "SN-A2-2504": 0.474, "SN-A2-2601": 0.752, "SN-A2-2602": 0.894, "SN-A2-2603": -0.179}, "2015": {"SN-A2-0103": 0.897, "SN-A2-0701": 0.549, "SN-A2-0702": 1.242, "SN-A2-0703": 0.879, "SN-A2-0801": 0.292, "SN-A2-0802": 0.292, "SN-A2-0803": 0.292, "SN-A2-1201": 1.199, "SN-A2-1202": 0.292, "SN-A2-1203": 0.32, "SN-A2-1701": 3.589, "SN-A2-1702": 0.292, "SN-A2-1801": 0.292, "SN-A2-1802": 0.292, "SN-A2-1803": 0.292, "SN-A2-1902": 0.292, "SN-A2-2001": 2.019, "SN-A2-2002": 1.363, "SN-A2-2003": 1.611, "SN-A2-2101": 1.081, "SN-A2-2102": 1.121, "SN-A2-2103": 1.108, "SN-A2-2201": 0.292, "SN-A2-2202": 0.631, "SN-A2-2203": 1.32, "SN-A2-2204": 0.925, "SN-A2-2301": 0.292, "SN-A2-2302": 0.292, "SN-A2-2303": 0.388, "SN-A2-2401": 0.404, "SN-A2-2402": 0.585, "SN-A2-2403": 0.751, "SN-A2-2501": 0.522, "SN-A2-2502": 0.625, "SN-A2-2503": 0.859, "SN-A2-2504": 0.973, "SN-A2-2601": 0.609, "SN-A2-2602": 1.345, "SN-A2-2603": 0.492}}, "lstm_lf": {"2011": {"SN-A2-0103": 1.323, "SN-A2-0701": 1.717, "SN-A2-0702": 1.948, "SN-A2-0703": 1.796, "SN-A2-0802": 0.555, "SN-A2-0803": 0.392, "SN-A2-1201": 1.89, "SN-A2-1202": 1.806, "SN-A2-1203": 1.85, "SN-A2-1902": 0.609, "SN-A2-2001": 1.861, "SN-A2-2002": 1.869, "SN-A2-2003": 1.826, "SN-A2-2101": 1.856, "SN-A2-2102": 1.915, "SN-A2-2103": 1.861, "SN-A2-2201": 1.795, "SN-A2-2202": 1.501, "SN-A2-2203": 1.474, "SN-A2-2204": 1.575, "SN-A2-2301": 2.115, "SN-A2-2302": 2.076, "SN-A2-2303": 2.041, "SN-A2-2401": 1.036, "SN-A2-2402": 1.083, "SN-A2-2403": 1.951, "SN-A2-2501": 1.803, "SN-A2-2502": 1.777, "SN-A2-2503": 1.529, "SN-A2-2504": 1.261, "SN-A2-2601": 1.063, "SN-A2-2602": 2.009, "SN-A2-2603": 0.874}, "2012": {"SN-A2-0103": 0.713, "SN-A2-0701": 0.685, "SN-A2-0702": 0.879, "SN-A2-0703": 0.773, "SN-A2-0801": 0.456, "SN-A2-0802": 0.44, "SN-A2-0803": 0.422, "SN-A2-1201": 0.929, "SN-A2-1202": 0.97, "SN-A2-1203": 0.927, "SN-A2-1701": 3.472, "SN-A2-1702": 3.621, "SN-A2-1801": 0.563, "SN-A2-1803": 0.468, "SN-A2-1902": 0.384, "SN-A2-1903": 1.899, "SN-A2-2001": 0.916, "SN-A2-2002": 0.91, "SN-A2-2003": 0.914, "SN-A2-2101": 0.931, "SN-A2-2102": 0.929, "SN-A2-2103": 0.923, "SN-A2-2201": 0.774, "SN-A2-2202": 0.64, "SN-A2-2203": 0.828, "SN-A2-2204": 0.735, "SN-A2-2301": 0.954, "SN-A2-2302": 0.944, "SN-A2-2303": 1.037, "SN-A2-2401": 0.706, "SN-A2-2402": 0.708, "SN-A2-2403": 1.038, "SN-A2-2501": 1.019, "SN-A2-2502": 1.005, "SN-A2-2503": 0.879, "SN-A2-2504": 0.695, "SN-A2-2601": 0.668, "SN-A2-2602": 1.034, "SN-A2-2603": 0.622}, "2013": {"SN-A2-0103": 0.787, "SN-A2-0701": 0.951, "SN-A2-0702": 1.359, "SN-A2-0703": 1.285, "SN-A2-0801": 0.498, "SN-A2-0802": 0.36, "SN-A2-0803": 0.348, "SN-A2-1201": 1.342, "SN-A2-1202": 1.298, "SN-A2-1203": 1.337, "SN-A2-1701": 3.991, "SN-A2-1702": 4.136, "SN-A2-1902": 0.408, "SN-A2-2001": 1.19, "SN-A2-2002": 1.187, "SN-A2-2003": 1.192, "SN-A2-2101": 1.299, "SN-A2-2102": 1.318, "SN-A2-2103": 1.328, "SN-A2-2201": 1.08, "SN-A2-2202": 0.756, "SN-A2-2203": 0.818, "SN-A2-2204": 0.829, "SN-A2-2301": 1.271, "SN-A2-2302": 1.286, "SN-A2-2303": 1.333, "SN-A2-2401": 0.582, "SN-A2-2402": 0.636, "SN-A2-2403": 1.19, "SN-A2-2501": 1.132, "SN-A2-2502": 1.028, "SN-A2-2503": 0.834, "SN-A2-2504": 0.68, "SN-A2-2601": 0.653, "SN-A2-2602": 1.334, "SN-A2-2603": 0.504}, "2014": {"SN-A2-0103": 0.527, "SN-A2-0701": 0.789, "SN-A2-0702": 0.707, "SN-A2-0703": 0.779, "SN-A2-0801": 0.44, "SN-A2-0802": 0.403, "SN-A2-0803": 0.403, "SN-A2-1201": 1.461, "SN-A2-1202": 1.43, "SN-A2-1203": 1.456, "SN-A2-1701": 3.606, "SN-A2-1702": 3.951, "SN-A2-1801": 0.711, "SN-A2-1802": 3.939, "SN-A2-1803": 0.601, "SN-A2-1902": 0.429, "SN-A2-1903": 2.036, "SN-A2-2001": 1.446, "SN-A2-2002": 1.422, "SN-A2-2003": 1.413, "SN-A2-2101": 1.439, "SN-A2-2102": 1.469, "SN-A2-2103": 1.458, "SN-A2-2201": 1.059, "SN-A2-2202": 1.046, "SN-A2-2203": 0.84, "SN-A2-2204": 1.118, "SN-A2-2301": 1.456, "SN-A2-2302": 1.445, "SN-A2-2303": 1.429, "SN-A2-2401": 0.75, "SN-A2-2402": 0.765, "SN-A2-2403": 1.345, "SN-A2-2501": 1.201, "SN-A2-2502": 1.199, "SN-A2-2503": 0.843, "SN-A2-2504": 0.663, "SN-A2-2601": 0.641, "SN-A2-2602": 1.405, "SN-A2-2603": 0.526}, "2015": {"SN-A2-0103": 0.857, "SN-A2-0701": 0.764, "SN-A2-0702": 0.969, "SN-A2-0703": 0.921, "SN-A2-0801": 0.542, "SN-A2-0802": 0.47, "SN-A2-0803": 0.44, "SN-A2-1201": 1.022, "SN-A2-1202": 0.913, "SN-A2-1203": 1.031, "SN-A2-1701": 2.4, "SN-A2-1702": 2.519, "SN-A2-1801": 0.764, "SN-A2-1802": 2.55, "SN-A2-1803": 0.597, "SN-A2-1902": 0.456, "SN-A2-2001": 0.868, "SN-A2-2002": 0.862, "SN-A2-2003": 0.865, "SN-A2-2101": 0.894, "SN-A2-2102": 0.911, "SN-A2-2103": 0.922, "SN-A2-2201": 0.92, "SN-A2-2202": 0.745, "SN-A2-2203": 0.821, "SN-A2-2204": 0.766, "SN-A2-2301": 0.886, "SN-A2-2302": 0.873, "SN-A2-2303": 0.983, "SN-A2-2401": 0.642, "SN-A2-2402": 0.624, "SN-A2-2403": 0.885, "SN-A2-2501": 0.881, "SN-A2-2502": 0.857, "SN-A2-2503": 0.805, "SN-A2-2504": 0.697, "SN-A2-2601": 0.641, "SN-A2-2602": 0.876, "SN-A2-2603": 0.614}}, "nlinear_lf": {"2011": {"SN-A2-0103": 0.867, "SN-A2-0701": 1.018, "SN-A2-0702": 2.877, "SN-A2-0703": 2.849, "SN-A2-0802": 0.139, "SN-A2-0803": 0.279, "SN-A2-1201": 1.395, "SN-A2-1202": 1.676, "SN-A2-1203": 1.787, "SN-A2-1902": 0.227, "SN-A2-2001": 1.81, "SN-A2-2002": 1.952, "SN-A2-2003": 2.015, "SN-A2-2101": 1.308, "SN-A2-2102": 2.16, "SN-A2-2103": 1.754, "SN-A2-2201": 1.711, "SN-A2-2202": 1.095, "SN-A2-2203": 1.31, "SN-A2-2204": 1.088, "SN-A2-2301": 1.92, "SN-A2-2302": 1.275, "SN-A2-2303": 2.282, "SN-A2-2401": 0.985, "SN-A2-2402": 0.968, "SN-A2-2403": 2.199, "SN-A2-2501": 2.181, "SN-A2-2502": 1.876, "SN-A2-2503": 1.156, "SN-A2-2504": 0.827, "SN-A2-2601": 0.975, "SN-A2-2602": 1.941, "SN-A2-2603": 0.629}, "2012": {"SN-A2-0103": 0.759, "SN-A2-0701": 0.345, "SN-A2-0702": 1.279, "SN-A2-0703": 1.634, "SN-A2-0801": 0.69, "SN-A2-0802": 0.599, "SN-A2-0803": 0.538, "SN-A2-1201": 0.859, "SN-A2-1202": 0.913, "SN-A2-1203": 1.15, "SN-A2-1701": 3.287, "SN-A2-1702": 3.325, "SN-A2-1801": 0.813, "SN-A2-1803": 0.508, "SN-A2-1902": 0.587, "SN-A2-1903": 0.746, "SN-A2-2001": 0.752, "SN-A2-2002": 0.907, "SN-A2-2003": 1.005, "SN-A2-2101": 0.655, "SN-A2-2102": 1.216, "SN-A2-2103": 0.511, "SN-A2-2201": 0.718, "SN-A2-2202": 0.801, "SN-A2-2203": 0.785, "SN-A2-2204": 0.735, "SN-A2-2301": 1.543, "SN-A2-2302": 1.264, "SN-A2-2303": 1.372, "SN-A2-2401": 0.849, "SN-A2-2402": 0.854, "SN-A2-2403": 1.358, "SN-A2-2501": 0.971, "SN-A2-2502": 1.335, "SN-A2-2503": 1.221, "SN-A2-2504": 1.001, "SN-A2-2601": 0.906, "SN-A2-2602": 1.336, "SN-A2-2603": 0.791}, "2013": {"SN-A2-0103": 0.904, "SN-A2-0701": 0.507, "SN-A2-0702": 0.492, "SN-A2-0703": 0.553, "SN-A2-0801": 0.58, "SN-A2-0802": 0.514, "SN-A2-0803": 0.548, "SN-A2-1201": 0.796, "SN-A2-1202": 1.412, "SN-A2-1203": 1.191, "SN-A2-1701": 2.659, "SN-A2-1702": 3.574, "SN-A2-1902": 0.673, "SN-A2-2001": 1.865, "SN-A2-2002": 1.922, "SN-A2-2003": 1.073, "SN-A2-2101": 1.437, "SN-A2-2102": 0.717, "SN-A2-2103": 1.23, "SN-A2-2201": 1.819, "SN-A2-2202": 0.788, "SN-A2-2203": 1.165, "SN-A2-2204": 0.872, "SN-A2-2301": 1.284, "SN-A2-2302": 1.077, "SN-A2-2303": 1.16, "SN-A2-2401": 0.773, "SN-A2-2402": 0.827, "SN-A2-2403": 1.465, "SN-A2-2501": 1.262, "SN-A2-2502": 1.441, "SN-A2-2503": 1.224, "SN-A2-2504": 1.001, "SN-A2-2601": 0.889, "SN-A2-2602": 1.522, "SN-A2-2603": 0.749}, "2014": {"SN-A2-0103": 0.702, "SN-A2-0701": 0.56, "SN-A2-0702": 1.241, "SN-A2-0703": 1.455, "SN-A2-0801": 0.426, "SN-A2-0802": 0.211, "SN-A2-0803": 0.11, "SN-A2-1201": 0.807, "SN-A2-1202": 1.471, "SN-A2-1203": 0.657, "SN-A2-1701": 3.343, "SN-A2-1702": 3.628, "SN-A2-1801": 1.379, "SN-A2-1802": 3.61, "SN-A2-1803": 0.564, "SN-A2-1902": 0.462, "SN-A2-1903": 0.807, "SN-A2-2001": 0.349, "SN-A2-2002": 0.425, "SN-A2-2003": 1.309, "SN-A2-2101": 0.718, "SN-A2-2102": 0.652, "SN-A2-2103": 0.856, "SN-A2-2201": 0.723, "SN-A2-2202": 0.611, "SN-A2-2203": 0.717, "SN-A2-2204": 0.747, "SN-A2-2301": 1.366, "SN-A2-2302": 1.193, "SN-A2-2303": 1.383, "SN-A2-2401": 0.695, "SN-A2-2402": 0.795, "SN-A2-2403": 1.793, "SN-A2-2501": 1.553, "SN-A2-2502": 1.464, "SN-A2-2503": 1.058, "SN-A2-2504": 0.856, "SN-A2-2601": 0.715, "SN-A2-2602": 1.754, "SN-A2-2603": 0.51}, "2015": {"SN-A2-0103": 0.881, "SN-A2-0701": 0.647, "SN-A2-0702": 0.888, "SN-A2-0703": 0.878, "SN-A2-0801": 0.674, "SN-A2-0802": 0.614, "SN-A2-0803": 0.508, "SN-A2-1201": 1.031, "SN-A2-1202": 1.326, "SN-A2-1203": 0.73, "SN-A2-1701": 3.366, "SN-A2-1702": 2.763, "SN-A2-1801": 1.437, "SN-A2-1802": 2.213, "SN-A2-1803": 0.884, "SN-A2-1902": 0.719, "SN-A2-2001": 1.224, "SN-A2-2002": 1.228, "SN-A2-2003": 1.446, "SN-A2-2101": 1.075, "SN-A2-2102": 0.866, "SN-A2-2103": 1.238, "SN-A2-2201": 1.403, "SN-A2-2202": 0.959, "SN-A2-2203": 1.0, "SN-A2-2204": 1.189, "SN-A2-2301": 1.234, "SN-A2-2302": 1.214, "SN-A2-2303": 1.233, "SN-A2-2401": 0.899, "SN-A2-2402": 1.041, "SN-A2-2403": 1.614, "SN-A2-2501": 1.503, "SN-A2-2502": 1.473, "SN-A2-2503": 1.335, "SN-A2-2504": 1.192, "SN-A2-2601": 0.927, "SN-A2-2602": 1.713, "SN-A2-2603": 0.835}}, "patchtst_lf": {"2011": {"SN-A2-0103": 0.418, "SN-A2-0701": 0.309, "SN-A2-0702": 2.055, "SN-A2-0703": 1.739, "SN-A2-0802": 0.506, "SN-A2-0803": 0.203, "SN-A2-1201": 1.15, "SN-A2-1202": 1.298, "SN-A2-1203": 1.236, "SN-A2-1902": 0.496, "SN-A2-2001": 1.743, "SN-A2-2002": 1.555, "SN-A2-2003": 1.34, "SN-A2-2101": 1.454, "SN-A2-2102": 0.988, "SN-A2-2103": 0.935, "SN-A2-2201": 0.71, "SN-A2-2202": 0.334, "SN-A2-2203": 0.613, "SN-A2-2204": 1.023, "SN-A2-2301": 1.937, "SN-A2-2302": 1.379, "SN-A2-2303": 2.035, "SN-A2-2401": 0.454, "SN-A2-2402": 0.475, "SN-A2-2403": 1.335, "SN-A2-2501": 0.833, "SN-A2-2502": 1.046, "SN-A2-2503": 0.999, "SN-A2-2504": 0.749, "SN-A2-2601": 0.532, "SN-A2-2602": 1.359, "SN-A2-2603": 0.421}, "2012": {"SN-A2-0103": 0.746, "SN-A2-0701": 0.841, "SN-A2-0702": 2.722, "SN-A2-0703": 2.248, "SN-A2-0801": 0.816, "SN-A2-0802": 0.826, "SN-A2-0803": 0.951, "SN-A2-1201": 1.486, "SN-A2-1202": 1.878, "SN-A2-1203": 1.37, "SN-A2-1701": 3.451, "SN-A2-1702": 3.795, "SN-A2-1801": 1.406, "SN-A2-1803": 1.098, "SN-A2-1902": 0.849, "SN-A2-1903": 1.401, "SN-A2-2001": 1.528, "SN-A2-2002": 1.514, "SN-A2-2003": 1.448, "SN-A2-2101": 1.603, "SN-A2-2102": 1.482, "SN-A2-2103": 1.565, "SN-A2-2201": 1.206, "SN-A2-2202": 1.286, "SN-A2-2203": 1.375, "SN-A2-2204": 1.158, "SN-A2-2301": 1.614, "SN-A2-2302": 1.508, "SN-A2-2303": 1.403, "SN-A2-2401": 1.183, "SN-A2-2402": 0.998, "SN-A2-2403": 2.06, "SN-A2-2501": 1.768, "SN-A2-2502": 1.511, "SN-A2-2503": 1.291, "SN-A2-2504": 1.15, "SN-A2-2601": 0.869, "SN-A2-2602": 2.391, "SN-A2-2603": 1.028}, "2013": {"SN-A2-0103": 0.67, "SN-A2-0701": 0.687, "SN-A2-0702": 2.135, "SN-A2-0703": 1.541, "SN-A2-0801": 0.555, "SN-A2-0802": 0.499, "SN-A2-0803": 0.51, "SN-A2-1201": 0.691, "SN-A2-1202": 0.968, "SN-A2-1203": 0.715, "SN-A2-1701": 3.172, "SN-A2-1702": 3.093, "SN-A2-1902": 0.544, "SN-A2-2001": 1.294, "SN-A2-2002": 1.38, "SN-A2-2003": 1.093, "SN-A2-2101": 1.127, "SN-A2-2102": 0.865, "SN-A2-2103": 0.979, "SN-A2-2201": 1.097, "SN-A2-2202": 0.652, "SN-A2-2203": 0.772, "SN-A2-2204": 0.965, "SN-A2-2301": 1.073, "SN-A2-2302": 1.045, "SN-A2-2303": 0.841, "SN-A2-2401": 0.513, "SN-A2-2402": 0.548, "SN-A2-2403": 1.003, "SN-A2-2501": 0.868, "SN-A2-2502": 0.777, "SN-A2-2503": 0.701, "SN-A2-2504": 0.692, "SN-A2-2601": 0.564, "SN-A2-2602": 1.058, "SN-A2-2603": 0.53}, "2014": {"SN-A2-0103": 0.493, "SN-A2-0701": 0.34, "SN-A2-0702": 0.415, "SN-A2-0703": 0.461, "SN-A2-0801": 0.393, "SN-A2-0802": 0.399, "SN-A2-0803": 0.337, "SN-A2-1201": 0.562, "SN-A2-1202": 0.841, "SN-A2-1203": 0.672, "SN-A2-1701": 1.272, "SN-A2-1702": 2.817, "SN-A2-1801": 0.936, "SN-A2-1802": 2.928, "SN-A2-1803": 0.618, "SN-A2-1902": 0.505, "SN-A2-1903": 0.502, "SN-A2-2001": 0.626, "SN-A2-2002": 0.645, "SN-A2-2003": 0.695, "SN-A2-2101": 0.475, "SN-A2-2102": 0.818, "SN-A2-2103": 0.783, "SN-A2-2201": 1.064, "SN-A2-2202": 0.783, "SN-A2-2203": 1.195, "SN-A2-2204": 0.867, "SN-A2-2301": 1.702, "SN-A2-2302": 1.61, "SN-A2-2303": 1.204, "SN-A2-2401": 0.369, "SN-A2-2402": 0.319, "SN-A2-2403": 0.838, "SN-A2-2501": 0.705, "SN-A2-2502": 0.852, "SN-A2-2503": 1.08, "SN-A2-2504": 0.797, "SN-A2-2601": 0.288, "SN-A2-2602": 0.752, "SN-A2-2603": 0.374}, "2015": {"SN-A2-0103": 0.575, "SN-A2-0701": 0.499, "SN-A2-0702": 0.599, "SN-A2-0703": 0.509, "SN-A2-0801": 0.442, "SN-A2-0802": 0.447, "SN-A2-0803": 0.449, "SN-A2-1201": 0.952, "SN-A2-1202": 1.195, "SN-A2-1203": 1.01, "SN-A2-1701": 1.912, "SN-A2-1702": 2.612, "SN-A2-1801": 0.985, "SN-A2-1802": 2.688, "SN-A2-1803": 0.502, "SN-A2-1902": 0.59, "SN-A2-2001": 1.17, "SN-A2-2002": 1.269, "SN-A2-2003": 1.191, "SN-A2-2101": 0.981, "SN-A2-2102": 1.044, "SN-A2-2103": 1.112, "SN-A2-2201": 0.92, "SN-A2-2202": 0.865, "SN-A2-2203": 0.791, "SN-A2-2204": 1.033, "SN-A2-2301": 1.387, "SN-A2-2302": 1.406, "SN-A2-2303": 1.229, "SN-A2-2401": 0.543, "SN-A2-2402": 0.512, "SN-A2-2403": 1.261, "SN-A2-2501": 0.716, "SN-A2-2502": 0.705, "SN-A2-2503": 0.746, "SN-A2-2504": 0.759, "SN-A2-2601": 0.489, "SN-A2-2602": 1.171, "SN-A2-2603": 0.528}}, "random_forest": {"2011": {"SN-A2-0103": 0.913, "SN-A2-0701": 0.917, "SN-A2-0702": 1.067, "SN-A2-0703": 1.201, "SN-A2-0802": 0.551, "SN-A2-0803": 0.44, "SN-A2-1201": 1.316, "SN-A2-1202": 1.578, "SN-A2-1203": 1.399, "SN-A2-1902": 1.177, "SN-A2-2001": 1.538, "SN-A2-2002": 1.323, "SN-A2-2003": 1.251, "SN-A2-2101": 1.224, "SN-A2-2102": 1.373, "SN-A2-2103": 1.353, "SN-A2-2201": 1.657, "SN-A2-2202": 1.452, "SN-A2-2203": 1.179, "SN-A2-2204": 1.201, "SN-A2-2301": 1.489, "SN-A2-2302": 1.545, "SN-A2-2303": 1.351, "SN-A2-2401": 0.876, "SN-A2-2402": 0.963, "SN-A2-2403": 1.392, "SN-A2-2501": 1.01, "SN-A2-2502": 1.11, "SN-A2-2503": 1.185, "SN-A2-2504": 1.157, "SN-A2-2601": 0.712, "SN-A2-2602": 1.57, "SN-A2-2603": 0.721}, "2012": {"SN-A2-0103": 1.358, "SN-A2-0701": 1.572, "SN-A2-0702": 1.686, "SN-A2-0703": 1.716, "SN-A2-0801": 1.044, "SN-A2-0802": 0.937, "SN-A2-0803": 0.538, "SN-A2-1201": 1.32, "SN-A2-1202": 1.677, "SN-A2-1203": 1.465, "SN-A2-1701": 3.072, "SN-A2-1702": 3.425, "SN-A2-1801": 1.029, "SN-A2-1803": 1.058, "SN-A2-1902": 0.792, "SN-A2-1903": 2.314, "SN-A2-2001": 1.618, "SN-A2-2002": 1.414, "SN-A2-2003": 1.469, "SN-A2-2101": 1.304, "SN-A2-2102": 1.443, "SN-A2-2103": 1.401, "SN-A2-2201": 0.915, "SN-A2-2202": 0.929, "SN-A2-2203": 1.013, "SN-A2-2204": 1.01, "SN-A2-2301": 1.649, "SN-A2-2302": 1.624, "SN-A2-2303": 1.355, "SN-A2-2401": 1.156, "SN-A2-2402": 1.484, "SN-A2-2403": 1.792, "SN-A2-2501": 1.571, "SN-A2-2502": 1.536, "SN-A2-2503": 1.066, "SN-A2-2504": 1.226, "SN-A2-2601": 1.453, "SN-A2-2602": 1.479, "SN-A2-2603": 1.035}, "2013": {"SN-A2-0103": 0.957, "SN-A2-0701": 0.92, "SN-A2-0702": 0.89, "SN-A2-0703": 0.869, "SN-A2-0801": 0.565, "SN-A2-0802": 0.527, "SN-A2-0803": 0.549, "SN-A2-1201": 1.228, "SN-A2-1202": 1.648, "SN-A2-1203": 1.044, "SN-A2-1701": 3.022, "SN-A2-1702": 3.386, "SN-A2-1902": 0.731, "SN-A2-2001": 1.299, "SN-A2-2002": 1.167, "SN-A2-2003": 1.219, "SN-A2-2101": 1.128, "SN-A2-2102": 1.266, "SN-A2-2103": 1.161, "SN-A2-2201": 1.279, "SN-A2-2202": 1.135, "SN-A2-2203": 0.965, "SN-A2-2204": 1.053, "SN-A2-2301": 1.522, "SN-A2-2302": 1.485, "SN-A2-2303": 1.161, "SN-A2-2401": 0.781, "SN-A2-2402": 1.021, "SN-A2-2403": 1.431, "SN-A2-2501": 1.203, "SN-A2-2502": 1.241, "SN-A2-2503": 0.981, "SN-A2-2504": 0.939, "SN-A2-2601": 0.925, "SN-A2-2602": 1.448, "SN-A2-2603": 0.836}, "2014": {"SN-A2-0103": 0.985, "SN-A2-0701": 0.98, "SN-A2-0702": 0.942, "SN-A2-0703": 0.742, "SN-A2-0801": 0.672, "SN-A2-0802": 0.878, "SN-A2-0803": 1.028, "SN-A2-1201": 1.239, "SN-A2-1202": 1.416, "SN-A2-1203": 1.24, "SN-A2-1701": 2.941, "SN-A2-1702": 3.185, "SN-A2-1801": 2.122, "SN-A2-1802": 3.207, "SN-A2-1803": 1.593, "SN-A2-1902": 1.511, "SN-A2-1903": 2.823, "SN-A2-2001": 1.574, "SN-A2-2002": 1.579, "SN-A2-2003": 1.386, "SN-A2-2101": 1.331, "SN-A2-2102": 1.493, "SN-A2-2103": 1.402, "SN-A2-2201": 1.141, "SN-A2-2202": 1.082, "SN-A2-2203": 0.979, "SN-A2-2204": 1.266, "SN-A2-2301": 1.738, "SN-A2-2302": 1.625, "SN-A2-2303": 1.441, "SN-A2-2401": 0.84, "SN-A2-2402": 0.826, "SN-A2-2403": 1.269, "SN-A2-2501": 1.116, "SN-A2-2502": 1.355, "SN-A2-2503": 1.101, "SN-A2-2504": 1.065, "SN-A2-2601": 0.855, "SN-A2-2602": 1.255, "SN-A2-2603": 0.769}, "2015": {"SN-A2-0103": 0.867, "SN-A2-0701": 0.811, "SN-A2-0702": 0.688, "SN-A2-0703": 0.781, "SN-A2-0801": 0.489, "SN-A2-0802": 0.525, "SN-A2-0803": 0.497, "SN-A2-1201": 1.164, "SN-A2-1202": 1.67, "SN-A2-1203": 1.138, "SN-A2-1701": 3.021, "SN-A2-1702": 3.047, "SN-A2-1801": 1.084, "SN-A2-1802": 1.372, "SN-A2-1803": 0.849, "SN-A2-1902": 0.745, "SN-A2-2001": 1.317, "SN-A2-2002": 1.231, "SN-A2-2003": 1.199, "SN-A2-2101": 1.148, "SN-A2-2102": 1.324, "SN-A2-2103": 1.284, "SN-A2-2201": 1.045, "SN-A2-2202": 0.96, "SN-A2-2203": 0.962, "SN-A2-2204": 0.985, "SN-A2-2301": 1.263, "SN-A2-2302": 1.291, "SN-A2-2303": 1.081, "SN-A2-2401": 0.828, "SN-A2-2402": 0.872, "SN-A2-2403": 1.32, "SN-A2-2501": 0.987, "SN-A2-2502": 1.009, "SN-A2-2503": 1.007, "SN-A2-2504": 0.966, "SN-A2-2601": 0.82, "SN-A2-2602": 1.432, "SN-A2-2603": 0.806}}, "ridge": {"2011": {"SN-A2-0103": 1.052, "SN-A2-0701": 0.67, "SN-A2-0702": 1.592, "SN-A2-0703": 1.608, "SN-A2-0802": 0.709, "SN-A2-0803": 0.663, "SN-A2-1201": 1.518, "SN-A2-1202": 1.51, "SN-A2-1203": 1.461, "SN-A2-1902": 1.148, "SN-A2-2001": 1.478, "SN-A2-2002": 1.551, "SN-A2-2003": 1.587, "SN-A2-2101": 1.493, "SN-A2-2102": 1.559, "SN-A2-2103": 1.789, "SN-A2-2201": 1.821, "SN-A2-2202": 1.615, "SN-A2-2203": 1.456, "SN-A2-2204": 1.382, "SN-A2-2301": 1.561, "SN-A2-2302": 1.577, "SN-A2-2303": 2.004, "SN-A2-2401": 0.9, "SN-A2-2402": 0.91, "SN-A2-2403": 1.402, "SN-A2-2501": 1.404, "SN-A2-2502": 1.463, "SN-A2-2503": 1.564, "SN-A2-2504": 1.24, "SN-A2-2601": 0.812, "SN-A2-2602": 1.471, "SN-A2-2603": 0.809}, "2012": {"SN-A2-0103": 0.781, "SN-A2-0701": 0.55, "SN-A2-0702": 1.258, "SN-A2-0703": 1.321, "SN-A2-0801": 0.475, "SN-A2-0802": 0.457, "SN-A2-0803": 0.369, "SN-A2-1201": 1.606, "SN-A2-1202": 1.602, "SN-A2-1203": 1.587, "SN-A2-1701": 2.211, "SN-A2-1702": 2.681, "SN-A2-1801": 0.977, "SN-A2-1803": 0.449, "SN-A2-1902": 0.411, "SN-A2-1903": 1.112, "SN-A2-2001": 1.524, "SN-A2-2002": 1.52, "SN-A2-2003": 1.592, "SN-A2-2101": 1.666, "SN-A2-2102": 1.713, "SN-A2-2103": 1.867, "SN-A2-2201": 1.333, "SN-A2-2202": 0.95, "SN-A2-2203": 0.888, "SN-A2-2204": 1.04, "SN-A2-2301": 1.805, "SN-A2-2302": 2.057, "SN-A2-2303": 1.585, "SN-A2-2401": 0.78, "SN-A2-2402": 0.839, "SN-A2-2403": 1.468, "SN-A2-2501": 1.312, "SN-A2-2502": 1.25, "SN-A2-2503": 1.003, "SN-A2-2504": 0.946, "SN-A2-2601": 0.631, "SN-A2-2602": 1.54, "SN-A2-2603": 0.708}, "2013": {"SN-A2-0103": 0.925, "SN-A2-0701": 0.77, "SN-A2-0702": 1.248, "SN-A2-0703": 1.32, "SN-A2-0801": 0.494, "SN-A2-0802": 0.345, "SN-A2-0803": 0.239, "SN-A2-1201": 1.099, "SN-A2-1202": 1.138, "SN-A2-1203": 0.811, "SN-A2-1701": 2.187, "SN-A2-1702": 2.679, "SN-A2-1902": 0.311, "SN-A2-2001": 0.946, "SN-A2-2002": 1.272, "SN-A2-2003": 1.207, "SN-A2-2101": 1.177, "SN-A2-2102": 0.893, "SN-A2-2103": 1.248, "SN-A2-2201": 1.487, "SN-A2-2202": 0.99, "SN-A2-2203": 0.97, "SN-A2-2204": 1.019, "SN-A2-2301": 0.948, "SN-A2-2302": 1.201, "SN-A2-2303": 1.148, "SN-A2-2401": 0.84, "SN-A2-2402": 0.896, "SN-A2-2403": 1.046, "SN-A2-2501": 1.067, "SN-A2-2502": 1.112, "SN-A2-2503": 0.98, "SN-A2-2504": 0.856, "SN-A2-2601": 0.709, "SN-A2-2602": 1.155, "SN-A2-2603": 0.708}, "2014": {"SN-A2-0103": 1.044, "SN-A2-0701": 0.729, "SN-A2-0702": 1.463, "SN-A2-0703": 1.577, "SN-A2-0801": 0.899, "SN-A2-0802": 0.777, "SN-A2-0803": 0.682, "SN-A2-1201": 1.352, "SN-A2-1202": 1.176, "SN-A2-1203": 1.009, "SN-A2-1701": 3.013, "SN-A2-1702": 3.662, "SN-A2-1801": 1.566, "SN-A2-1802": 3.077, "SN-A2-1803": 0.946, "SN-A2-1902": 0.786, "SN-A2-1903": 1.966, "SN-A2-2001": 1.43, "SN-A2-2002": 1.674, "SN-A2-2003": 1.528, "SN-A2-2101": 1.306, "SN-A2-2102": 1.486, "SN-A2-2103": 1.66, "SN-A2-2201": 1.282, "SN-A2-2202": 1.117, "SN-A2-2203": 1.36, "SN-A2-2204": 1.448, "SN-A2-2301": 1.669, "SN-A2-2302": 1.79, "SN-A2-2303": 1.845, "SN-A2-2401": 0.9, "SN-A2-2402": 0.926, "SN-A2-2403": 1.307, "SN-A2-2501": 1.377, "SN-A2-2502": 1.285, "SN-A2-2503": 1.329, "SN-A2-2504": 1.067, "SN-A2-2601": 0.782, "SN-A2-2602": 1.29, "SN-A2-2603": 0.875}, "2015": {"SN-A2-0103": 0.855, "SN-A2-0701": 0.755, "SN-A2-0702": 1.238, "SN-A2-0703": 1.206, "SN-A2-0801": 0.659, "SN-A2-0802": 0.527, "SN-A2-0803": 0.384, "SN-A2-1201": 1.25, "SN-A2-1202": 1.242, "SN-A2-1203": 1.156, "SN-A2-1701": 2.408, "SN-A2-1702": 2.986, "SN-A2-1801": 1.037, "SN-A2-1802": 2.434, "SN-A2-1803": 0.488, "SN-A2-1902": 0.409, "SN-A2-2001": 1.284, "SN-A2-2002": 1.37, "SN-A2-2003": 1.339, "SN-A2-2101": 1.388, "SN-A2-2102": 1.229, "SN-A2-2103": 1.47, "SN-A2-2201": 1.278, "SN-A2-2202": 0.815, "SN-A2-2203": 0.953, "SN-A2-2204": 1.033, "SN-A2-2301": 1.028, "SN-A2-2302": 1.255, "SN-A2-2303": 1.371, "SN-A2-2401": 0.829, "SN-A2-2402": 0.923, "SN-A2-2403": 1.384, "SN-A2-2501": 1.086, "SN-A2-2502": 1.02, "SN-A2-2503": 1.033, "SN-A2-2504": 0.753, "SN-A2-2601": 0.904, "SN-A2-2602": 1.628, "SN-A2-2603": 0.795}}, "tabdpt": {"2011": {"SN-A2-0103": 0.885, "SN-A2-0701": 0.856, "SN-A2-0702": 1.235, "SN-A2-0703": 1.118, "SN-A2-0802": 0.503, "SN-A2-0803": 0.459, "SN-A2-1201": 1.362, "SN-A2-1202": 1.306, "SN-A2-1203": 1.271, "SN-A2-1902": 0.702, "SN-A2-2001": 1.581, "SN-A2-2002": 1.341, "SN-A2-2003": 1.432, "SN-A2-2101": 1.119, "SN-A2-2102": 1.212, "SN-A2-2103": 1.119, "SN-A2-2201": 1.022, "SN-A2-2202": 0.964, "SN-A2-2203": 1.001, "SN-A2-2204": 0.966, "SN-A2-2301": 1.457, "SN-A2-2302": 1.499, "SN-A2-2303": 1.504, "SN-A2-2401": 0.805, "SN-A2-2402": 0.829, "SN-A2-2403": 1.494, "SN-A2-2501": 1.071, "SN-A2-2502": 1.119, "SN-A2-2503": 1.029, "SN-A2-2504": 1.046, "SN-A2-2601": 0.747, "SN-A2-2602": 1.586, "SN-A2-2603": 0.811}, "2012": {"SN-A2-0103": 1.126, "SN-A2-0701": 1.092, "SN-A2-0702": 1.475, "SN-A2-0703": 1.506, "SN-A2-0801": 0.62, "SN-A2-0802": 0.629, "SN-A2-0803": 0.598, "SN-A2-1201": 1.077, "SN-A2-1202": 1.691, "SN-A2-1203": 1.08, "SN-A2-1701": 3.441, "SN-A2-1702": 3.459, "SN-A2-1801": 1.183, "SN-A2-1803": 0.925, "SN-A2-1902": 0.732, "SN-A2-1903": 2.119, "SN-A2-2001": 1.464, "SN-A2-2002": 1.252, "SN-A2-2003": 1.264, "SN-A2-2101": 1.027, "SN-A2-2102": 0.953, "SN-A2-2103": 0.921, "SN-A2-2201": 0.978, "SN-A2-2202": 0.91, "SN-A2-2203": 1.131, "SN-A2-2204": 0.908, "SN-A2-2301": 1.422, "SN-A2-2302": 1.39, "SN-A2-2303": 1.274, "SN-A2-2401": 0.933, "SN-A2-2402": 1.113, "SN-A2-2403": 1.924, "SN-A2-2501": 1.508, "SN-A2-2502": 1.537, "SN-A2-2503": 1.23, "SN-A2-2504": 1.291, "SN-A2-2601": 1.029, "SN-A2-2602": 1.821, "SN-A2-2603": 0.867}, "2013": {"SN-A2-0103": 0.964, "SN-A2-0701": 0.777, "SN-A2-0702": 1.768, "SN-A2-0703": 1.223, "SN-A2-0801": 0.597, "SN-A2-0802": 0.524, "SN-A2-0803": 0.557, "SN-A2-1201": 1.003, "SN-A2-1202": 1.468, "SN-A2-1203": 0.948, "SN-A2-1701": 3.4, "SN-A2-1702": 3.416, "SN-A2-1902": 0.615, "SN-A2-2001": 1.55, "SN-A2-2002": 1.406, "SN-A2-2003": 1.527, "SN-A2-2101": 1.227, "SN-A2-2102": 1.17, "SN-A2-2103": 1.137, "SN-A2-2201": 1.119, "SN-A2-2202": 0.854, "SN-A2-2203": 0.963, "SN-A2-2204": 0.927, "SN-A2-2301": 1.67, "SN-A2-2302": 1.631, "SN-A2-2303": 1.238, "SN-A2-2401": 0.728, "SN-A2-2402": 0.918, "SN-A2-2403": 1.567, "SN-A2-2501": 1.225, "SN-A2-2502": 1.217, "SN-A2-2503": 0.891, "SN-A2-2504": 1.044, "SN-A2-2601": 0.886, "SN-A2-2602": 1.516, "SN-A2-2603": 0.71}, "2014": {"SN-A2-0103": 0.904, "SN-A2-0701": 0.947, "SN-A2-0702": 1.377, "SN-A2-0703": 1.093, "SN-A2-0801": 0.656, "SN-A2-0802": 0.518, "SN-A2-0803": 0.499, "SN-A2-1201": 1.082, "SN-A2-1202": 1.613, "SN-A2-1203": 1.105, "SN-A2-1701": 3.319, "SN-A2-1702": 3.353, "SN-A2-1801": 1.599, "SN-A2-1802": 2.923, "SN-A2-1803": 0.801, "SN-A2-1902": 0.598, "SN-A2-1903": 1.27, "SN-A2-2001": 2.234, "SN-A2-2002": 1.882, "SN-A2-2003": 1.914, "SN-A2-2101": 1.415, "SN-A2-2102": 1.636, "SN-A2-2103": 1.453, "SN-A2-2201": 0.949, "SN-A2-2202": 0.997, "SN-A2-2203": 0.956, "SN-A2-2204": 1.267, "SN-A2-2301": 1.955, "SN-A2-2302": 1.806, "SN-A2-2303": 1.628, "SN-A2-2401": 0.752, "SN-A2-2402": 0.862, "SN-A2-2403": 1.645, "SN-A2-2501": 1.158, "SN-A2-2502": 1.203, "SN-A2-2503": 0.851, "SN-A2-2504": 0.866, "SN-A2-2601": 0.878, "SN-A2-2602": 1.578, "SN-A2-2603": 0.688}, "2015": {"SN-A2-0103": 0.997, "SN-A2-0701": 0.722, "SN-A2-0702": 1.112, "SN-A2-0703": 0.927, "SN-A2-0801": 0.504, "SN-A2-0802": 0.54, "SN-A2-0803": 0.531, "SN-A2-1201": 1.163, "SN-A2-1202": 1.357, "SN-A2-1203": 0.976, "SN-A2-1701": 2.929, "SN-A2-1702": 2.85, "SN-A2-1801": 0.878, "SN-A2-1802": 0.977, "SN-A2-1803": 0.664, "SN-A2-1902": 0.577, "SN-A2-2001": 1.406, "SN-A2-2002": 1.39, "SN-A2-2003": 1.284, "SN-A2-2101": 1.095, "SN-A2-2102": 1.283, "SN-A2-2103": 1.307, "SN-A2-2201": 0.81, "SN-A2-2202": 0.834, "SN-A2-2203": 0.929, "SN-A2-2204": 0.912, "SN-A2-2301": 0.88, "SN-A2-2302": 0.97, "SN-A2-2303": 0.92, "SN-A2-2401": 0.634, "SN-A2-2402": 0.734, "SN-A2-2403": 1.485, "SN-A2-2501": 0.872, "SN-A2-2502": 0.937, "SN-A2-2503": 0.949, "SN-A2-2504": 0.829, "SN-A2-2601": 0.715, "SN-A2-2602": 1.276, "SN-A2-2603": 0.659}}, "tabicl": {"2011": {"SN-A2-0103": 0.87, "SN-A2-0701": 1.187, "SN-A2-0702": 1.672, "SN-A2-0703": 1.536, "SN-A2-0802": 0.416, "SN-A2-0803": 0.418, "SN-A2-1201": 1.57, "SN-A2-1202": 1.645, "SN-A2-1203": 1.154, "SN-A2-1902": 0.642, "SN-A2-2001": 1.576, "SN-A2-2002": 0.993, "SN-A2-2003": 1.201, "SN-A2-2101": 1.029, "SN-A2-2102": 1.227, "SN-A2-2103": 1.145, "SN-A2-2201": 1.176, "SN-A2-2202": 1.022, "SN-A2-2203": 0.981, "SN-A2-2204": 0.969, "SN-A2-2301": 1.344, "SN-A2-2302": 1.479, "SN-A2-2303": 1.407, "SN-A2-2401": 0.614, "SN-A2-2402": 0.805, "SN-A2-2403": 1.277, "SN-A2-2501": 1.191, "SN-A2-2502": 1.088, "SN-A2-2503": 0.897, "SN-A2-2504": 0.948, "SN-A2-2601": 0.652, "SN-A2-2602": 1.147, "SN-A2-2603": 0.651}, "2012": {"SN-A2-0103": 1.428, "SN-A2-0701": 1.537, "SN-A2-0702": 1.946, "SN-A2-0703": 1.737, "SN-A2-0801": 0.85, "SN-A2-0802": 0.784, "SN-A2-0803": 0.732, "SN-A2-1201": 1.55, "SN-A2-1202": 2.161, "SN-A2-1203": 1.238, "SN-A2-1701": 3.417, "SN-A2-1702": 3.469, "SN-A2-1801": 1.045, "SN-A2-1803": 1.197, "SN-A2-1902": 0.982, "SN-A2-1903": 1.774, "SN-A2-2001": 1.299, "SN-A2-2002": 1.207, "SN-A2-2003": 1.272, "SN-A2-2101": 1.188, "SN-A2-2102": 1.226, "SN-A2-2103": 1.13, "SN-A2-2201": 1.064, "SN-A2-2202": 0.829, "SN-A2-2203": 1.033, "SN-A2-2204": 0.841, "SN-A2-2301": 1.732, "SN-A2-2302": 1.575, "SN-A2-2303": 1.728, "SN-A2-2401": 0.887, "SN-A2-2402": 1.329, "SN-A2-2403": 1.847, "SN-A2-2501": 1.611, "SN-A2-2502": 1.493, "SN-A2-2503": 1.092, "SN-A2-2504": 1.322, "SN-A2-2601": 1.061, "SN-A2-2602": 1.592, "SN-A2-2603": 0.901}, "2013": {"SN-A2-0103": 0.877, "SN-A2-0701": 0.827, "SN-A2-0702": 1.066, "SN-A2-0703": 0.943, "SN-A2-0801": 0.572, "SN-A2-0802": 0.549, "SN-A2-0803": 0.594, "SN-A2-1201": 1.065, "SN-A2-1202": 1.274, "SN-A2-1203": 0.864, "SN-A2-1701": 3.355, "SN-A2-1702": 3.38, "SN-A2-1902": 0.617, "SN-A2-2001": 1.032, "SN-A2-2002": 0.958, "SN-A2-2003": 0.846, "SN-A2-2101": 0.768, "SN-A2-2102": 0.983, "SN-A2-2103": 0.762, "SN-A2-2201": 0.754, "SN-A2-2202": 0.587, "SN-A2-2203": 0.8, "SN-A2-2204": 0.7, "SN-A2-2301": 1.324, "SN-A2-2302": 1.219, "SN-A2-2303": 0.993, "SN-A2-2401": 0.563, "SN-A2-2402": 0.792, "SN-A2-2403": 1.302, "SN-A2-2501": 1.05, "SN-A2-2502": 1.045, "SN-A2-2503": 0.806, "SN-A2-2504": 1.049, "SN-A2-2601": 0.701, "SN-A2-2602": 1.045, "SN-A2-2603": 0.669}, "2014": {"SN-A2-0103": 0.813, "SN-A2-0701": 0.71, "SN-A2-0702": 0.729, "SN-A2-0703": 0.676, "SN-A2-0801": 0.525, "SN-A2-0802": 0.57, "SN-A2-0803": 0.587, "SN-A2-1201": 1.253, "SN-A2-1202": 1.271, "SN-A2-1203": 1.068, "SN-A2-1701": 3.193, "SN-A2-1702": 3.147, "SN-A2-1801": 1.33, "SN-A2-1802": 2.806, "SN-A2-1803": 0.753, "SN-A2-1902": 0.635, "SN-A2-1903": 0.784, "SN-A2-2001": 1.385, "SN-A2-2002": 1.476, "SN-A2-2003": 1.297, "SN-A2-2101": 1.067, "SN-A2-2102": 1.172, "SN-A2-2103": 1.189, "SN-A2-2201": 0.95, "SN-A2-2202": 0.819, "SN-A2-2203": 0.913, "SN-A2-2204": 1.134, "SN-A2-2301": 1.496, "SN-A2-2302": 1.321, "SN-A2-2303": 1.411, "SN-A2-2401": 0.733, "SN-A2-2402": 0.843, "SN-A2-2403": 1.462, "SN-A2-2501": 1.161, "SN-A2-2502": 1.138, "SN-A2-2503": 0.932, "SN-A2-2504": 1.031, "SN-A2-2601": 0.748, "SN-A2-2602": 1.312, "SN-A2-2603": 0.699}, "2015": {"SN-A2-0103": 0.824, "SN-A2-0701": 0.767, "SN-A2-0702": 0.775, "SN-A2-0703": 0.665, "SN-A2-0801": 0.41, "SN-A2-0802": 0.417, "SN-A2-0803": 0.41, "SN-A2-1201": 0.891, "SN-A2-1202": 1.323, "SN-A2-1203": 0.896, "SN-A2-1701": 2.807, "SN-A2-1702": 2.933, "SN-A2-1801": 0.73, "SN-A2-1802": 1.557, "SN-A2-1803": 0.594, "SN-A2-1902": 0.518, "SN-A2-2001": 1.218, "SN-A2-2002": 1.17, "SN-A2-2003": 0.984, "SN-A2-2101": 0.811, "SN-A2-2102": 1.057, "SN-A2-2103": 0.981, "SN-A2-2201": 0.73, "SN-A2-2202": 0.629, "SN-A2-2203": 0.751, "SN-A2-2204": 0.712, "SN-A2-2301": 0.996, "SN-A2-2302": 1.006, "SN-A2-2303": 0.911, "SN-A2-2401": 0.56, "SN-A2-2402": 0.649, "SN-A2-2403": 1.262, "SN-A2-2501": 0.872, "SN-A2-2502": 0.831, "SN-A2-2503": 0.767, "SN-A2-2504": 0.809, "SN-A2-2601": 0.604, "SN-A2-2602": 1.073, "SN-A2-2603": 0.485}}, "tabpfn": {"2011": {"SN-A2-0103": 0.921, "SN-A2-0701": 1.101, "SN-A2-0702": 1.565, "SN-A2-0703": 1.267, "SN-A2-0802": 0.45, "SN-A2-0803": 0.448, "SN-A2-1201": 1.409, "SN-A2-1202": 1.641, "SN-A2-1203": 1.283, "SN-A2-1902": 0.762, "SN-A2-2001": 1.433, "SN-A2-2002": 1.199, "SN-A2-2003": 1.221, "SN-A2-2101": 1.23, "SN-A2-2102": 1.244, "SN-A2-2103": 1.259, "SN-A2-2201": 1.2, "SN-A2-2202": 1.115, "SN-A2-2203": 0.943, "SN-A2-2204": 0.974, "SN-A2-2301": 1.406, "SN-A2-2302": 1.411, "SN-A2-2303": 1.526, "SN-A2-2401": 0.675, "SN-A2-2402": 0.88, "SN-A2-2403": 1.308, "SN-A2-2501": 1.143, "SN-A2-2502": 1.186, "SN-A2-2503": 0.966, "SN-A2-2504": 1.005, "SN-A2-2601": 0.729, "SN-A2-2602": 1.297, "SN-A2-2603": 0.579}, "2012": {"SN-A2-0103": 1.337, "SN-A2-0701": 1.744, "SN-A2-0702": 2.184, "SN-A2-0703": 2.055, "SN-A2-0801": 0.881, "SN-A2-0802": 0.699, "SN-A2-0803": 0.647, "SN-A2-1201": 1.354, "SN-A2-1202": 1.924, "SN-A2-1203": 1.205, "SN-A2-1701": 3.484, "SN-A2-1702": 3.525, "SN-A2-1801": 0.958, "SN-A2-1803": 1.438, "SN-A2-1902": 1.094, "SN-A2-1903": 1.182, "SN-A2-2001": 1.163, "SN-A2-2002": 1.068, "SN-A2-2003": 1.092, "SN-A2-2101": 1.108, "SN-A2-2102": 1.176, "SN-A2-2103": 1.11, "SN-A2-2201": 1.031, "SN-A2-2202": 0.822, "SN-A2-2203": 0.924, "SN-A2-2204": 0.765, "SN-A2-2301": 1.711, "SN-A2-2302": 1.614, "SN-A2-2303": 1.536, "SN-A2-2401": 0.961, "SN-A2-2402": 1.176, "SN-A2-2403": 1.761, "SN-A2-2501": 1.644, "SN-A2-2502": 1.609, "SN-A2-2503": 1.113, "SN-A2-2504": 1.352, "SN-A2-2601": 1.159, "SN-A2-2602": 1.622, "SN-A2-2603": 0.834}, "2013": {"SN-A2-0103": 0.857, "SN-A2-0701": 0.63, "SN-A2-0702": 0.788, "SN-A2-0703": 0.696, "SN-A2-0801": 0.531, "SN-A2-0802": 0.547, "SN-A2-0803": 0.597, "SN-A2-1201": 1.131, "SN-A2-1202": 1.437, "SN-A2-1203": 0.868, "SN-A2-1701": 3.425, "SN-A2-1702": 3.44, "SN-A2-1902": 0.685, "SN-A2-2001": 1.239, "SN-A2-2002": 1.164, "SN-A2-2003": 0.984, "SN-A2-2101": 0.881, "SN-A2-2102": 0.928, "SN-A2-2103": 0.887, "SN-A2-2201": 0.77, "SN-A2-2202": 0.677, "SN-A2-2203": 0.822, "SN-A2-2204": 0.789, "SN-A2-2301": 1.451, "SN-A2-2302": 1.304, "SN-A2-2303": 1.103, "SN-A2-2401": 0.628, "SN-A2-2402": 0.803, "SN-A2-2403": 1.508, "SN-A2-2501": 1.097, "SN-A2-2502": 1.118, "SN-A2-2503": 0.879, "SN-A2-2504": 1.162, "SN-A2-2601": 0.709, "SN-A2-2602": 1.412, "SN-A2-2603": 0.633}, "2014": {"SN-A2-0103": 0.798, "SN-A2-0701": 0.614, "SN-A2-0702": 0.626, "SN-A2-0703": 0.579, "SN-A2-0801": 0.516, "SN-A2-0802": 0.54, "SN-A2-0803": 0.56, "SN-A2-1201": 1.294, "SN-A2-1202": 1.118, "SN-A2-1203": 1.047, "SN-A2-1701": 3.373, "SN-A2-1702": 3.271, "SN-A2-1801": 2.474, "SN-A2-1802": 3.081, "SN-A2-1803": 1.127, "SN-A2-1902": 0.702, "SN-A2-1903": 0.717, "SN-A2-2001": 1.361, "SN-A2-2002": 1.445, "SN-A2-2003": 1.136, "SN-A2-2101": 1.015, "SN-A2-2102": 1.173, "SN-A2-2103": 1.134, "SN-A2-2201": 1.031, "SN-A2-2202": 0.981, "SN-A2-2203": 0.964, "SN-A2-2204": 1.243, "SN-A2-2301": 1.636, "SN-A2-2302": 1.467, "SN-A2-2303": 1.456, "SN-A2-2401": 0.705, "SN-A2-2402": 0.745, "SN-A2-2403": 1.638, "SN-A2-2501": 1.075, "SN-A2-2502": 1.186, "SN-A2-2503": 0.955, "SN-A2-2504": 0.992, "SN-A2-2601": 0.675, "SN-A2-2602": 1.365, "SN-A2-2603": 0.627}, "2015": {"SN-A2-0103": 0.838, "SN-A2-0701": 0.633, "SN-A2-0702": 0.703, "SN-A2-0703": 0.555, "SN-A2-0801": 0.428, "SN-A2-0802": 0.464, "SN-A2-0803": 0.458, "SN-A2-1201": 1.119, "SN-A2-1202": 1.313, "SN-A2-1203": 0.94, "SN-A2-1701": 2.931, "SN-A2-1702": 3.023, "SN-A2-1801": 0.787, "SN-A2-1802": 1.358, "SN-A2-1803": 0.712, "SN-A2-1902": 0.595, "SN-A2-2001": 1.276, "SN-A2-2002": 1.118, "SN-A2-2003": 0.984, "SN-A2-2101": 0.84, "SN-A2-2102": 1.025, "SN-A2-2103": 1.029, "SN-A2-2201": 0.783, "SN-A2-2202": 0.694, "SN-A2-2203": 0.769, "SN-A2-2204": 0.789, "SN-A2-2301": 0.98, "SN-A2-2302": 0.967, "SN-A2-2303": 0.914, "SN-A2-2401": 0.629, "SN-A2-2402": 0.642, "SN-A2-2403": 1.249, "SN-A2-2501": 0.87, "SN-A2-2502": 0.865, "SN-A2-2503": 0.769, "SN-A2-2504": 0.823, "SN-A2-2601": 0.551, "SN-A2-2602": 1.177, "SN-A2-2603": 0.533}}, "transformer_lf": {"2011": {"SN-A2-0103": 0.768, "SN-A2-0701": 0.181, "SN-A2-0702": 1.768, "SN-A2-0703": 1.272, "SN-A2-0802": 0.385, "SN-A2-0803": 0.397, "SN-A2-1201": 1.408, "SN-A2-1202": 1.629, "SN-A2-1203": 1.449, "SN-A2-1902": 0.542, "SN-A2-2001": 1.321, "SN-A2-2002": 1.274, "SN-A2-2003": 1.162, "SN-A2-2101": 1.34, "SN-A2-2102": 1.334, "SN-A2-2103": 1.4, "SN-A2-2201": 0.967, "SN-A2-2202": 0.868, "SN-A2-2203": 0.981, "SN-A2-2204": 1.048, "SN-A2-2301": 1.656, "SN-A2-2302": 1.693, "SN-A2-2303": 1.353, "SN-A2-2401": 0.495, "SN-A2-2402": 0.545, "SN-A2-2403": 1.221, "SN-A2-2501": 0.854, "SN-A2-2502": 0.911, "SN-A2-2503": 0.942, "SN-A2-2504": 0.723, "SN-A2-2601": 0.547, "SN-A2-2602": 1.655, "SN-A2-2603": 0.431}, "2012": {"SN-A2-0103": 0.772, "SN-A2-0701": 0.383, "SN-A2-0702": 1.188, "SN-A2-0703": 0.959, "SN-A2-0801": 0.562, "SN-A2-0802": 0.55, "SN-A2-0803": 0.55, "SN-A2-1201": 0.902, "SN-A2-1202": 1.182, "SN-A2-1203": 0.865, "SN-A2-1701": 3.479, "SN-A2-1702": 3.293, "SN-A2-1801": 1.048, "SN-A2-1803": 0.721, "SN-A2-1902": 0.804, "SN-A2-1903": 0.409, "SN-A2-2001": 0.964, "SN-A2-2002": 0.952, "SN-A2-2003": 0.965, "SN-A2-2101": 1.004, "SN-A2-2102": 0.927, "SN-A2-2103": 0.915, "SN-A2-2201": 0.829, "SN-A2-2202": 0.737, "SN-A2-2203": 1.139, "SN-A2-2204": 0.902, "SN-A2-2301": 1.258, "SN-A2-2302": 1.304, "SN-A2-2303": 0.99, "SN-A2-2401": 1.036, "SN-A2-2402": 1.054, "SN-A2-2403": 1.732, "SN-A2-2501": 1.666, "SN-A2-2502": 1.659, "SN-A2-2503": 1.297, "SN-A2-2504": 1.473, "SN-A2-2601": 0.857, "SN-A2-2602": 1.678, "SN-A2-2603": 0.878}, "2013": {"SN-A2-0103": 0.878, "SN-A2-0701": 0.554, "SN-A2-0702": 1.363, "SN-A2-0703": 0.941, "SN-A2-0801": 0.673, "SN-A2-0802": 0.648, "SN-A2-0803": 0.656, "SN-A2-1201": 1.011, "SN-A2-1202": 1.345, "SN-A2-1203": 1.006, "SN-A2-1701": 3.848, "SN-A2-1702": 3.887, "SN-A2-1902": 0.905, "SN-A2-2001": 1.463, "SN-A2-2002": 1.499, "SN-A2-2003": 1.45, "SN-A2-2101": 1.246, "SN-A2-2102": 1.212, "SN-A2-2103": 1.142, "SN-A2-2201": 1.256, "SN-A2-2202": 1.005, "SN-A2-2203": 1.051, "SN-A2-2204": 1.215, "SN-A2-2301": 1.62, "SN-A2-2302": 1.544, "SN-A2-2303": 1.646, "SN-A2-2401": 0.846, "SN-A2-2402": 0.865, "SN-A2-2403": 1.576, "SN-A2-2501": 1.321, "SN-A2-2502": 1.214, "SN-A2-2503": 1.077, "SN-A2-2504": 1.562, "SN-A2-2601": 0.718, "SN-A2-2602": 1.692, "SN-A2-2603": 0.781}, "2014": {"SN-A2-0103": 0.592, "SN-A2-0701": 0.435, "SN-A2-0702": 0.681, "SN-A2-0703": 0.532, "SN-A2-0801": 0.465, "SN-A2-0802": 0.501, "SN-A2-0803": 0.503, "SN-A2-1201": 0.957, "SN-A2-1202": 1.245, "SN-A2-1203": 0.959, "SN-A2-1701": 2.994, "SN-A2-1702": 3.14, "SN-A2-1801": 2.025, "SN-A2-1802": 3.114, "SN-A2-1803": 0.832, "SN-A2-1902": 0.768, "SN-A2-1903": 0.642, "SN-A2-2001": 1.411, "SN-A2-2002": 1.49, "SN-A2-2003": 1.462, "SN-A2-2101": 1.173, "SN-A2-2102": 1.068, "SN-A2-2103": 1.1, "SN-A2-2201": 1.354, "SN-A2-2202": 1.038, "SN-A2-2203": 1.108, "SN-A2-2204": 1.261, "SN-A2-2301": 1.452, "SN-A2-2302": 1.456, "SN-A2-2303": 1.414, "SN-A2-2401": 0.784, "SN-A2-2402": 0.774, "SN-A2-2403": 1.713, "SN-A2-2501": 1.224, "SN-A2-2502": 1.23, "SN-A2-2503": 1.127, "SN-A2-2504": 1.28, "SN-A2-2601": 0.65, "SN-A2-2602": 1.737, "SN-A2-2603": 0.676}, "2015": {"SN-A2-0103": 0.569, "SN-A2-0701": 0.426, "SN-A2-0702": 0.456, "SN-A2-0703": 0.414, "SN-A2-0801": 0.39, "SN-A2-0802": 0.381, "SN-A2-0803": 0.374, "SN-A2-1201": 0.849, "SN-A2-1202": 1.065, "SN-A2-1203": 0.833, "SN-A2-1701": 2.369, "SN-A2-1702": 3.244, "SN-A2-1801": 1.439, "SN-A2-1802": 2.292, "SN-A2-1803": 0.672, "SN-A2-1902": 0.561, "SN-A2-2001": 1.704, "SN-A2-2002": 1.702, "SN-A2-2003": 1.633, "SN-A2-2101": 1.108, "SN-A2-2102": 1.069, "SN-A2-2103": 1.088, "SN-A2-2201": 1.215, "SN-A2-2202": 1.097, "SN-A2-2203": 1.008, "SN-A2-2204": 1.271, "SN-A2-2301": 1.717, "SN-A2-2302": 1.709, "SN-A2-2303": 1.565, "SN-A2-2401": 0.538, "SN-A2-2402": 0.552, "SN-A2-2403": 1.279, "SN-A2-2501": 0.849, "SN-A2-2502": 0.976, "SN-A2-2503": 1.081, "SN-A2-2504": 1.089, "SN-A2-2601": 0.583, "SN-A2-2602": 1.289, "SN-A2-2603": 0.493}}, "trend": {"2011": {"SN-A2-0103": 0.811, "SN-A2-0701": 0.584, "SN-A2-0702": 2.1, "SN-A2-0703": 1.217, "SN-A2-0802": 0.505, "SN-A2-0803": 0.83, "SN-A2-1201": 1.403, "SN-A2-1202": 1.514, "SN-A2-1203": 1.346, "SN-A2-1902": 0.675, "SN-A2-2001": 1.847, "SN-A2-2002": 1.351, "SN-A2-2003": 1.88, "SN-A2-2101": 1.111, "SN-A2-2102": 1.18, "SN-A2-2103": 1.141, "SN-A2-2201": 1.007, "SN-A2-2202": 0.898, "SN-A2-2203": 1.616, "SN-A2-2204": 0.814, "SN-A2-2301": 1.634, "SN-A2-2302": 1.63, "SN-A2-2303": 1.588, "SN-A2-2401": 0.58, "SN-A2-2402": 1.375, "SN-A2-2403": 1.966, "SN-A2-2501": 1.464, "SN-A2-2502": 1.502, "SN-A2-2503": 1.357, "SN-A2-2504": 1.587, "SN-A2-2601": 0.751, "SN-A2-2602": 1.502, "SN-A2-2603": 0.66}, "2012": {"SN-A2-0103": 0.818, "SN-A2-0701": 0.575, "SN-A2-0702": 1.65, "SN-A2-0703": 1.024, "SN-A2-0801": 0.462, "SN-A2-0802": 0.481, "SN-A2-0803": 0.831, "SN-A2-1201": 1.281, "SN-A2-1202": 0.596, "SN-A2-1203": 0.931, "SN-A2-1701": 3.498, "SN-A2-1702": 3.5, "SN-A2-1801": 1.187, "SN-A2-1803": 1.187, "SN-A2-1902": 0.656, "SN-A2-1903": 1.187, "SN-A2-2001": 1.793, "SN-A2-2002": 1.311, "SN-A2-2003": 1.825, "SN-A2-2101": 1.075, "SN-A2-2102": 1.14, "SN-A2-2103": 1.106, "SN-A2-2201": 0.957, "SN-A2-2202": 0.86, "SN-A2-2203": 0.896, "SN-A2-2204": 0.796, "SN-A2-2301": 1.658, "SN-A2-2302": 1.563, "SN-A2-2303": 0.769, "SN-A2-2401": 0.571, "SN-A2-2402": 1.289, "SN-A2-2403": 1.954, "SN-A2-2501": 1.366, "SN-A2-2502": 1.397, "SN-A2-2503": 1.243, "SN-A2-2504": 1.568, "SN-A2-2601": 0.749, "SN-A2-2602": 1.495, "SN-A2-2603": 0.673}, "2013": {"SN-A2-0103": 0.804, "SN-A2-0701": 0.56, "SN-A2-0702": 1.44, "SN-A2-0703": 0.949, "SN-A2-0801": 0.489, "SN-A2-0802": 0.484, "SN-A2-0803": 0.925, "SN-A2-1201": 1.234, "SN-A2-1202": 1.464, "SN-A2-1203": 0.91, "SN-A2-1701": 3.448, "SN-A2-1702": 3.45, "SN-A2-1902": 0.667, "SN-A2-2001": 1.82, "SN-A2-2002": 1.446, "SN-A2-2003": 1.849, "SN-A2-2101": 1.108, "SN-A2-2102": 1.193, "SN-A2-2103": 1.121, "SN-A2-2201": 1.041, "SN-A2-2202": 0.871, "SN-A2-2203": 0.888, "SN-A2-2204": 0.796, "SN-A2-2301": 1.656, "SN-A2-2302": 1.574, "SN-A2-2303": 0.922, "SN-A2-2401": 0.572, "SN-A2-2402": 1.273, "SN-A2-2403": 1.935, "SN-A2-2501": 1.368, "SN-A2-2502": 1.392, "SN-A2-2503": 1.291, "SN-A2-2504": 1.543, "SN-A2-2601": 0.785, "SN-A2-2602": 2.197, "SN-A2-2603": 0.685}, "2014": {"SN-A2-0103": 0.804, "SN-A2-0701": 0.567, "SN-A2-0702": 1.283, "SN-A2-0703": 0.891, "SN-A2-0801": 0.473, "SN-A2-0802": 0.485, "SN-A2-0803": 0.891, "SN-A2-1201": 1.2, "SN-A2-1202": 1.41, "SN-A2-1203": 0.866, "SN-A2-1701": 3.29, "SN-A2-1702": 3.292, "SN-A2-1801": 3.86, "SN-A2-1802": 1.219, "SN-A2-1803": 0.875, "SN-A2-1902": 0.684, "SN-A2-1903": 0.7, "SN-A2-2001": 1.868, "SN-A2-2002": 1.472, "SN-A2-2003": 1.888, "SN-A2-2101": 1.129, "SN-A2-2102": 1.212, "SN-A2-2103": 1.199, "SN-A2-2201": 1.062, "SN-A2-2202": 0.877, "SN-A2-2203": 0.92, "SN-A2-2204": 0.82, "SN-A2-2301": 1.678, "SN-A2-2302": 1.601, "SN-A2-2303": 1.511, "SN-A2-2401": 0.603, "SN-A2-2402": 1.217, "SN-A2-2403": 2.011, "SN-A2-2501": 1.399, "SN-A2-2502": 1.386, "SN-A2-2503": 1.272, "SN-A2-2504": 1.465, "SN-A2-2601": 1.111, "SN-A2-2602": 1.533, "SN-A2-2603": 0.697}, "2015": {"SN-A2-0103": 0.793, "SN-A2-0701": 0.579, "SN-A2-0702": 1.178, "SN-A2-0703": 0.828, "SN-A2-0801": 0.461, "SN-A2-0802": 0.478, "SN-A2-0803": 0.518, "SN-A2-1201": 1.2, "SN-A2-1202": 1.359, "SN-A2-1203": 0.933, "SN-A2-1701": 2.375, "SN-A2-1702": 2.462, "SN-A2-1801": 2.38, "SN-A2-1802": 0.5, "SN-A2-1803": 0.762, "SN-A2-1902": 0.67, "SN-A2-2001": 1.791, "SN-A2-2002": 1.453, "SN-A2-2003": 1.85, "SN-A2-2101": 1.64, "SN-A2-2102": 1.254, "SN-A2-2103": 1.237, "SN-A2-2201": 1.065, "SN-A2-2202": 0.893, "SN-A2-2203": 0.933, "SN-A2-2204": 0.833, "SN-A2-2301": 1.683, "SN-A2-2302": 1.609, "SN-A2-2303": 1.521, "SN-A2-2401": 0.613, "SN-A2-2402": 1.175, "SN-A2-2403": 1.96, "SN-A2-2501": 1.359, "SN-A2-2502": 1.357, "SN-A2-2503": 1.26, "SN-A2-2504": 1.413, "SN-A2-2601": 0.843, "SN-A2-2602": 1.524, "SN-A2-2603": 0.683}}, "tst_lf": {"2011": {"SN-A2-0103": 0.616, "SN-A2-0701": 0.478, "SN-A2-0702": 2.266, "SN-A2-0703": 1.619, "SN-A2-0802": 0.323, "SN-A2-0803": 0.32, "SN-A2-1201": 1.233, "SN-A2-1202": 1.385, "SN-A2-1203": 1.27, "SN-A2-1902": 0.405, "SN-A2-2001": 1.224, "SN-A2-2002": 1.223, "SN-A2-2003": 1.239, "SN-A2-2101": 1.283, "SN-A2-2102": 1.209, "SN-A2-2103": 1.248, "SN-A2-2201": 1.16, "SN-A2-2202": 0.782, "SN-A2-2203": 1.056, "SN-A2-2204": 0.716, "SN-A2-2301": 1.379, "SN-A2-2302": 1.204, "SN-A2-2303": 1.313, "SN-A2-2401": 0.383, "SN-A2-2402": 0.39, "SN-A2-2403": 1.432, "SN-A2-2501": 1.358, "SN-A2-2502": 1.13, "SN-A2-2503": 1.061, "SN-A2-2504": 0.52, "SN-A2-2601": 0.447, "SN-A2-2602": 1.527, "SN-A2-2603": 0.316}, "2012": {"SN-A2-0103": 0.875, "SN-A2-0701": 0.624, "SN-A2-0702": 1.643, "SN-A2-0703": 1.268, "SN-A2-0801": 0.748, "SN-A2-0802": 0.706, "SN-A2-0803": 0.703, "SN-A2-1201": 0.949, "SN-A2-1202": 1.111, "SN-A2-1203": 0.956, "SN-A2-1701": 2.926, "SN-A2-1702": 3.441, "SN-A2-1801": 1.022, "SN-A2-1803": 0.85, "SN-A2-1902": 0.788, "SN-A2-1903": 1.137, "SN-A2-2001": 0.966, "SN-A2-2002": 0.976, "SN-A2-2003": 0.983, "SN-A2-2101": 1.002, "SN-A2-2102": 0.979, "SN-A2-2103": 0.967, "SN-A2-2201": 0.933, "SN-A2-2202": 0.849, "SN-A2-2203": 1.073, "SN-A2-2204": 0.92, "SN-A2-2301": 1.439, "SN-A2-2302": 1.316, "SN-A2-2303": 0.954, "SN-A2-2401": 0.788, "SN-A2-2402": 0.787, "SN-A2-2403": 1.298, "SN-A2-2501": 1.155, "SN-A2-2502": 1.138, "SN-A2-2503": 1.09, "SN-A2-2504": 0.952, "SN-A2-2601": 0.794, "SN-A2-2602": 1.339, "SN-A2-2603": 0.744}, "2013": {"SN-A2-0103": 0.758, "SN-A2-0701": 0.439, "SN-A2-0702": 0.691, "SN-A2-0703": 0.49, "SN-A2-0801": 0.561, "SN-A2-0802": 0.504, "SN-A2-0803": 0.505, "SN-A2-1201": 0.9, "SN-A2-1202": 1.074, "SN-A2-1203": 1.027, "SN-A2-1701": 3.707, "SN-A2-1702": 3.859, "SN-A2-1902": 0.581, "SN-A2-2001": 0.891, "SN-A2-2002": 0.904, "SN-A2-2003": 0.899, "SN-A2-2101": 0.893, "SN-A2-2102": 0.956, "SN-A2-2103": 0.932, "SN-A2-2201": 0.734, "SN-A2-2202": 0.634, "SN-A2-2203": 0.841, "SN-A2-2204": 0.72, "SN-A2-2301": 1.254, "SN-A2-2302": 1.185, "SN-A2-2303": 0.853, "SN-A2-2401": 0.517, "SN-A2-2402": 0.514, "SN-A2-2403": 1.131, "SN-A2-2501": 1.039, "SN-A2-2502": 0.879, "SN-A2-2503": 0.853, "SN-A2-2504": 0.643, "SN-A2-2601": 0.525, "SN-A2-2602": 1.131, "SN-A2-2603": 0.489}, "2014": {"SN-A2-0103": 0.825, "SN-A2-0701": 0.866, "SN-A2-0702": 0.695, "SN-A2-0703": 0.789, "SN-A2-0801": 0.833, "SN-A2-0802": 0.713, "SN-A2-0803": 0.605, "SN-A2-1201": 1.333, "SN-A2-1202": 1.383, "SN-A2-1203": 1.306, "SN-A2-1701": 0.892, "SN-A2-1702": 1.868, "SN-A2-1801": 1.619, "SN-A2-1802": 2.052, "SN-A2-1803": 1.274, "SN-A2-1902": 1.027, "SN-A2-1903": 1.12, "SN-A2-2001": 1.345, "SN-A2-2002": 1.367, "SN-A2-2003": 1.348, "SN-A2-2101": 1.35, "SN-A2-2102": 1.339, "SN-A2-2103": 1.321, "SN-A2-2201": 1.353, "SN-A2-2202": 1.28, "SN-A2-2203": 1.374, "SN-A2-2204": 1.32, "SN-A2-2301": 1.618, "SN-A2-2302": 1.616, "SN-A2-2303": 1.362, "SN-A2-2401": 0.951, "SN-A2-2402": 0.939, "SN-A2-2403": 1.63, "SN-A2-2501": 1.508, "SN-A2-2502": 1.423, "SN-A2-2503": 1.385, "SN-A2-2504": 1.246, "SN-A2-2601": 0.986, "SN-A2-2602": 1.669, "SN-A2-2603": 0.82}, "2015": {"SN-A2-0103": 0.655, "SN-A2-0701": 0.614, "SN-A2-0702": 0.956, "SN-A2-0703": 1.029, "SN-A2-0801": 0.689, "SN-A2-0802": 0.495, "SN-A2-0803": 0.496, "SN-A2-1201": 1.217, "SN-A2-1202": 0.995, "SN-A2-1203": 1.179, "SN-A2-1701": 2.125, "SN-A2-1702": 3.166, "SN-A2-1801": 1.338, "SN-A2-1802": 3.142, "SN-A2-1803": 0.982, "SN-A2-1902": 0.578, "SN-A2-2001": 1.22, "SN-A2-2002": 1.258, "SN-A2-2003": 1.192, "SN-A2-2101": 1.156, "SN-A2-2102": 1.275, "SN-A2-2103": 1.178, "SN-A2-2201": 1.288, "SN-A2-2202": 0.982, "SN-A2-2203": 0.965, "SN-A2-2204": 1.004, "SN-A2-2301": 1.662, "SN-A2-2302": 1.537, "SN-A2-2303": 1.128, "SN-A2-2401": 0.548, "SN-A2-2402": 0.554, "SN-A2-2403": 1.234, "SN-A2-2501": 1.249, "SN-A2-2502": 1.024, "SN-A2-2503": 0.964, "SN-A2-2504": 0.702, "SN-A2-2601": 0.617, "SN-A2-2602": 1.307, "SN-A2-2603": 0.48}}, "twso_bc": {"2011": {"SN-A2-0701": 0.262, "SN-A2-1201": 1.651, "SN-A2-2102": 1.896, "SN-A2-2601": 0.106}, "2012": {"SN-A2-0701": 0.506, "SN-A2-1201": 1.427, "SN-A2-2102": 1.437, "SN-A2-2601": 0.917}, "2013": {"SN-A2-0701": 0.675, "SN-A2-1201": 1.356, "SN-A2-2102": 0.884, "SN-A2-2601": 1.051}, "2014": {"SN-A2-0701": 0.371, "SN-A2-1201": 1.351, "SN-A2-2102": 0.456, "SN-A2-2601": 0.181}, "2015": {"SN-A2-0701": 0.567, "SN-A2-1201": 1.381, "SN-A2-2102": 0.863, "SN-A2-2601": 0.8}}, "xgboost": {"2011": {"SN-A2-0103": 0.962, "SN-A2-0701": 1.051, "SN-A2-0702": 1.31, "SN-A2-0703": 1.342, "SN-A2-0802": 0.693, "SN-A2-0803": 0.62, "SN-A2-1201": 1.287, "SN-A2-1202": 1.608, "SN-A2-1203": 1.438, "SN-A2-1902": 0.747, "SN-A2-2001": 1.55, "SN-A2-2002": 1.359, "SN-A2-2003": 1.425, "SN-A2-2101": 1.445, "SN-A2-2102": 1.405, "SN-A2-2103": 1.499, "SN-A2-2201": 1.939, "SN-A2-2202": 1.295, "SN-A2-2203": 1.131, "SN-A2-2204": 1.14, "SN-A2-2301": 1.592, "SN-A2-2302": 1.608, "SN-A2-2303": 1.427, "SN-A2-2401": 0.868, "SN-A2-2402": 0.986, "SN-A2-2403": 1.393, "SN-A2-2501": 1.049, "SN-A2-2502": 1.155, "SN-A2-2503": 1.101, "SN-A2-2504": 1.101, "SN-A2-2601": 0.671, "SN-A2-2602": 1.668, "SN-A2-2603": 0.79}, "2012": {"SN-A2-0103": 1.233, "SN-A2-0701": 1.486, "SN-A2-0702": 1.662, "SN-A2-0703": 1.348, "SN-A2-0801": 0.971, "SN-A2-0802": 0.798, "SN-A2-0803": 0.659, "SN-A2-1201": 1.281, "SN-A2-1202": 1.618, "SN-A2-1203": 1.35, "SN-A2-1701": 3.11, "SN-A2-1702": 3.186, "SN-A2-1801": 0.89, "SN-A2-1803": 0.996, "SN-A2-1902": 0.724, "SN-A2-1903": 2.672, "SN-A2-2001": 1.513, "SN-A2-2002": 1.428, "SN-A2-2003": 1.441, "SN-A2-2101": 1.405, "SN-A2-2102": 1.424, "SN-A2-2103": 1.354, "SN-A2-2201": 0.989, "SN-A2-2202": 1.019, "SN-A2-2203": 1.088, "SN-A2-2204": 1.223, "SN-A2-2301": 1.679, "SN-A2-2302": 1.588, "SN-A2-2303": 1.439, "SN-A2-2401": 1.212, "SN-A2-2402": 1.334, "SN-A2-2403": 1.714, "SN-A2-2501": 1.538, "SN-A2-2502": 1.591, "SN-A2-2503": 1.139, "SN-A2-2504": 1.285, "SN-A2-2601": 1.321, "SN-A2-2602": 1.522, "SN-A2-2603": 0.965}, "2013": {"SN-A2-0103": 0.887, "SN-A2-0701": 0.856, "SN-A2-0702": 0.815, "SN-A2-0703": 0.844, "SN-A2-0801": 0.616, "SN-A2-0802": 0.582, "SN-A2-0803": 0.568, "SN-A2-1201": 1.25, "SN-A2-1202": 1.898, "SN-A2-1203": 1.097, "SN-A2-1701": 3.212, "SN-A2-1702": 3.25, "SN-A2-1902": 0.72, "SN-A2-2001": 1.218, "SN-A2-2002": 1.218, "SN-A2-2003": 1.218, "SN-A2-2101": 1.097, "SN-A2-2102": 1.376, "SN-A2-2103": 1.044, "SN-A2-2201": 1.063, "SN-A2-2202": 1.05, "SN-A2-2203": 1.107, "SN-A2-2204": 1.079, "SN-A2-2301": 1.606, "SN-A2-2302": 1.395, "SN-A2-2303": 1.041, "SN-A2-2401": 0.857, "SN-A2-2402": 0.976, "SN-A2-2403": 1.37, "SN-A2-2501": 1.157, "SN-A2-2502": 1.237, "SN-A2-2503": 1.014, "SN-A2-2504": 0.922, "SN-A2-2601": 0.856, "SN-A2-2602": 1.501, "SN-A2-2603": 0.768}, "2014": {"SN-A2-0103": 0.761, "SN-A2-0701": 0.9, "SN-A2-0702": 0.779, "SN-A2-0703": 0.667, "SN-A2-0801": 0.571, "SN-A2-0802": 0.71, "SN-A2-0803": 1.031, "SN-A2-1201": 1.25, "SN-A2-1202": 1.401, "SN-A2-1203": 1.272, "SN-A2-1701": 2.98, "SN-A2-1702": 3.149, "SN-A2-1801": 1.778, "SN-A2-1802": 3.059, "SN-A2-1803": 1.586, "SN-A2-1902": 1.192, "SN-A2-1903": 2.892, "SN-A2-2001": 1.744, "SN-A2-2002": 1.669, "SN-A2-2003": 1.41, "SN-A2-2101": 1.397, "SN-A2-2102": 1.545, "SN-A2-2103": 1.449, "SN-A2-2201": 1.152, "SN-A2-2202": 1.014, "SN-A2-2203": 1.191, "SN-A2-2204": 1.331, "SN-A2-2301": 1.705, "SN-A2-2302": 1.712, "SN-A2-2303": 1.648, "SN-A2-2401": 0.816, "SN-A2-2402": 0.778, "SN-A2-2403": 1.481, "SN-A2-2501": 0.936, "SN-A2-2502": 1.302, "SN-A2-2503": 1.23, "SN-A2-2504": 1.153, "SN-A2-2601": 0.766, "SN-A2-2602": 1.414, "SN-A2-2603": 0.736}, "2015": {"SN-A2-0103": 0.734, "SN-A2-0701": 0.715, "SN-A2-0702": 0.756, "SN-A2-0703": 0.761, "SN-A2-0801": 0.568, "SN-A2-0802": 0.616, "SN-A2-0803": 0.565, "SN-A2-1201": 1.331, "SN-A2-1202": 1.637, "SN-A2-1203": 1.19, "SN-A2-1701": 2.978, "SN-A2-1702": 2.929, "SN-A2-1801": 1.215, "SN-A2-1802": 1.698, "SN-A2-1803": 1.082, "SN-A2-1902": 0.891, "SN-A2-2001": 1.313, "SN-A2-2002": 1.141, "SN-A2-2003": 1.248, "SN-A2-2101": 1.278, "SN-A2-2102": 1.298, "SN-A2-2103": 1.228, "SN-A2-2201": 1.072, "SN-A2-2202": 0.765, "SN-A2-2203": 0.907, "SN-A2-2204": 0.883, "SN-A2-2301": 1.246, "SN-A2-2302": 1.309, "SN-A2-2303": 1.089, "SN-A2-2401": 0.855, "SN-A2-2402": 0.804, "SN-A2-2403": 1.576, "SN-A2-2501": 1.19, "SN-A2-2502": 0.99, "SN-A2-2503": 0.938, "SN-A2-2504": 0.923, "SN-A2-2601": 0.762, "SN-A2-2602": 1.218, "SN-A2-2603": 0.744}}}, "n_regions": 40}}, "note": "Grey fill and black borders come from the same admin polygons as the choropleth (metropolitan extent for US/FR). Viridis on benchmark regions; year slider for single years. Colors autoscale to pooled actual+pred."};
+    const SHAP_DATA = {"available": false, "shap_dir": null, "by_key": {}};
+    const coverageInfo = document.getElementById("coverage-info");
+    const heatmapWrap = document.getElementById("heatmap-wrap");
+    const datasetFilter = document.getElementById("dataset-filter");
+    const modelFilter = document.getElementById("model-filter");
+    const groupDatasets = document.getElementById("group-datasets");
+    const colorModeSelect = document.getElementById("color-mode");
+    const selectionLabel = document.getElementById("selection-label");
+    const missingNote = document.getElementById("missing-note");
+    const imgGrid = document.getElementById("img-grid");
+    const drillColB = document.getElementById("drill-col-b");
+    const mapCaptionLeft = document.getElementById("map-caption-left");
+    const mapCaptionRight = document.getElementById("map-caption-right");
+    const drillImageA = document.getElementById("drill-image-a");
+    const drillImageB = document.getElementById("drill-image-b");
+    const mapGridDynamic = document.getElementById("map-grid-dynamic");
+    const regionMapActual = document.getElementById("region-map-actual");
+    const regionMapPred = document.getElementById("region-map-pred");
+    const regionMapLegendActual = document.getElementById("region-map-legend-actual");
+    const regionMapLegendPred = document.getElementById("region-map-legend-pred");
+    const mapYearControls = document.getElementById("map-year-controls");
+    const mapYearSlider = document.getElementById("map-year-slider");
+    const mapYearLabel = document.getElementById("map-year-label");
+    const mapCaptionLeftDyn = document.getElementById("map-caption-left-dyn");
+    const mapCaptionRightDyn = document.getElementById("map-caption-right-dyn");
+    const panelButtons = Array.from(document.querySelectorAll(".toolbar button"));
+    const shapPanelBtn = document.getElementById("shap-panel-btn");
+    const shapPanel = document.getElementById("shap-panel");
+    const shapCaption = document.getElementById("shap-caption");
+    const shapMetaChart = document.getElementById("shap-meta-chart");
+    const shapFeaturesBody = document.querySelector("#shap-features-table tbody");
+
+    const HAS_SHAP = Boolean(
+      SHAP_DATA && SHAP_DATA.available && SHAP_DATA.by_key
+        && Object.keys(SHAP_DATA.by_key).length
+    );
+
+    const SHAP_MODEL_FALLBACK_LABELS = {
+      random_forest: "Random Forest",
+      transformer_lf: "Transformer",
+    };
+
+    function shapKey(dataset, model) {
+      return `${dataset}|||${model}`;
+    }
+
+    function hasShapFor(dataset, model) {
+      if (!HAS_SHAP || !dataset || !model) return false;
+      return Boolean((SHAP_DATA.by_key || {})[shapKey(dataset, model)]);
+    }
+
+    function shapAvailableModelLabels() {
+      const labels = new Map();
+      for (const entry of Object.values(SHAP_DATA.by_key || {})) {
+        const key = entry.model || "";
+        const label = entry.model_label || SHAP_MODEL_FALLBACK_LABELS[key] || key;
+        if (label) labels.set(key, label);
+      }
+      const preferred = ["random_forest", "transformer_lf"];
+      const ordered = [];
+      for (const key of preferred) {
+        if (labels.has(key)) ordered.push(labels.get(key));
+        labels.delete(key);
+      }
+      ordered.push(...Array.from(labels.values()).sort((a, b) => a.localeCompare(b)));
+      return ordered;
+    }
+
+    function formatShapModelList(labels) {
+      if (!labels.length) return "Random Forest and Transformer (when computed)";
+      if (labels.length === 1) return labels[0];
+      if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+      return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+    }
+
+    function shapUnavailableMessage(model) {
+      const available = formatShapModelList(shapAvailableModelLabels());
+      const modelLabel = model
+        ? (SHAP_MODEL_FALLBACK_LABELS[model] || model)
+        : null;
+      if (!HAS_SHAP) {
+        return `SHAP is not available for this country yet. It is currently computed for ${available}.`;
+      }
+      const modelBit = modelLabel ? ` for ${modelLabel}` : "";
+      return `SHAP is not available${modelBit}. It is currently available for ${available}.`;
+    }
+
+    function updateShapButtonState() {
+      if (!shapPanelBtn) return;
+      const enabled = selectedCell
+        ? hasShapFor(selectedCell.dataset, selectedCell.model)
+        : false;
+      shapPanelBtn.disabled = !enabled;
+      shapPanelBtn.classList.toggle("is-disabled", !enabled);
+      shapPanelBtn.textContent = enabled ? "SHAP" : "SHAP (n/a)";
+      shapPanelBtn.title = enabled
+        ? "Feature importance (SHAP)"
+        : shapUnavailableMessage(selectedCell ? selectedCell.model : null);
+      if (!enabled && activePanel === "shap") {
+        activePanel = "maps";
+        panelButtons.forEach(b => {
+          b.classList.toggle("active", b.dataset.panel === "maps");
+        });
+      }
+    }
+    const MAP_YEAR_MEAN = "__mean__";
+    let mapYearKeys = [MAP_YEAR_MEAN];
+    let mapYearSelection = MAP_YEAR_MEAN;
+    let mapFeaturesCache = null;
+    let mapFeaturesCacheCountry = null;
+
+    const HAS_DYNAMIC_MAPS = Boolean(
+      MAP_DATA && MAP_DATA.datasets && Object.keys(MAP_DATA.datasets).length
+        && MAP_DATA.geojson_by_country && Object.keys(MAP_DATA.geojson_by_country).length
+    );
+    const geoCache = new Map();
+    const REGION_MAP_WIDTH = 520;
+    const REGION_MAP_HEIGHT = 420;
+    const REGION_MAP_MARGIN = 10;
+    const REGION_FILL_MISSING = "#d3d3d3";
+
+    function fmtMap(v, digits = 2) {
+      if (v === null || v === undefined || Number.isNaN(v)) return "—";
+      return Number(v).toFixed(digits);
+    }
+
+    async function loadCountryGeojson(country) {
+      if (geoCache.has(country)) return geoCache.get(country);
+      const href = (MAP_DATA.geojson_by_country || {})[country];
+      if (!href) return null;
+      try {
+        const geo = await d3.json(href);
+        if (!geo || !geo.features) return null;
+        const features = geo.features.map(f => rewindFeatureForSvg({
+          ...f,
+          properties: { ...f.properties, loc: String(f.properties.loc ?? "") },
+        }));
+        geoCache.set(country, features);
+        return features;
+      } catch (err) {
+        console.warn("GeoJSON load failed:", href, err);
+        return null;
+      }
+    }
+
+    // Mapbox geojson-rewind (RFC 7946): outer rings CCW for D3/SVG fills.
+    function rewindRing(ring, clockwise) {
+      let area = 0;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const p0 = ring[i];
+        const p1 = ring[j];
+        area += (p1[0] - p0[0]) * (p1[1] + p0[1]);
+      }
+      if ((area < 0) === clockwise) ring.reverse();
+      return ring;
+    }
+
+    function rewindGeometry(geometry, outerClockwise) {
+      if (!geometry) return geometry;
+      if (geometry.type === "Polygon") {
+        return {
+          ...geometry,
+          coordinates: geometry.coordinates.map((ring, i) =>
+            rewindRing(ring.slice(), i === 0 ? outerClockwise : !outerClockwise),
+          ),
+        };
+      }
+      if (geometry.type === "MultiPolygon") {
+        return {
+          ...geometry,
+          coordinates: geometry.coordinates.map(poly =>
+            poly.map((ring, i) =>
+              rewindRing(ring.slice(), i === 0 ? outerClockwise : !outerClockwise),
+            ),
+          ),
+        };
+      }
+      return geometry;
+    }
+
+    function rewindFeatureForSvg(feature) {
+      return {
+        ...feature,
+        geometry: rewindGeometry(feature.geometry, false),
+      };
+    }
+
+    function regionsWithData(features, valueByLoc) {
+      if (!features || !valueByLoc) return [];
+      return features.filter(f => valueByLoc[f.properties.loc] != null);
+    }
+
+    function yieldColor(value, extent) {
+      if (value == null || !extent) return REGION_FILL_MISSING;
+      const [lo, hi] = extent;
+      if (hi <= lo) return d3.interpolateViridis(0.5);
+      const t = Math.max(0, Math.min(1, (value - lo) / (hi - lo)));
+      return d3.interpolateViridis(t);
+    }
+
+    function sharedYieldExtent(actualMap, predMap) {
+      const vals = [
+        ...Object.values(actualMap || {}),
+        ...Object.values(predMap || {}),
+      ].filter(v => v != null && !Number.isNaN(v));
+      if (!vals.length) return null;
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      const pad = (hi - lo) * 0.05 || 0.5;
+      return [lo - pad, hi + pad];
+    }
+
+    function featuresForProjectionFit(features) {
+      if (!features || !features.length) return [];
+      return features.filter(f => {
+        const b = d3.geoBounds(f);
+        const lonSpan = b[1][0] - b[0][0];
+        const latSpan = b[1][1] - b[0][1];
+        return lonSpan <= 50 && latSpan <= 35;
+      });
+    }
+
+    function renderRegionChoropleth(
+      container,
+      regionFeatures,
+      valueByLoc,
+      extent,
+      title,
+    ) {
+      container.innerHTML = "";
+      if (!regionFeatures || !regionFeatures.length) {
+        container.innerHTML = `<p class="muted">${title}: no map geometry.</p>`;
+        return;
+      }
+      const dataFeatures = regionsWithData(regionFeatures, valueByLoc);
+      let fitFeatures = featuresForProjectionFit(
+        dataFeatures.length ? dataFeatures : regionFeatures,
+      );
+      if (!fitFeatures.length) fitFeatures = regionFeatures;
+      const svg = d3.select(container).append("svg")
+        .attr("viewBox", `0 0 ${REGION_MAP_WIDTH} ${REGION_MAP_HEIGHT}`)
+        .attr("role", "img")
+        .attr("aria-label", title);
+      const projection = d3.geoMercator().fitExtent(
+        [[REGION_MAP_MARGIN, REGION_MAP_MARGIN],
+         [REGION_MAP_WIDTH - REGION_MAP_MARGIN, REGION_MAP_HEIGHT - REGION_MAP_MARGIN]],
+        { type: "FeatureCollection", features: fitFeatures },
+      );
+      const path = d3.geoPath(projection);
+      svg.append("rect")
+        .attr("x", 0)
+        .attr("y", 0)
+        .attr("width", REGION_MAP_WIDTH)
+        .attr("height", REGION_MAP_HEIGHT)
+        .attr("fill", "#f8f9fa");
+      svg.selectAll("path.region")
+        .data(regionFeatures)
+        .join("path")
+        .attr("class", "region")
+        .attr("d", path)
+        .attr("fill", d => {
+          const loc = d.properties.loc;
+          const v = valueByLoc ? valueByLoc[loc] : null;
+          return yieldColor(v, extent);
+        })
+        .selectAll("title")
+        .data(d => [d])
+        .join("title")
+        .text(d => {
+          const loc = d.properties.loc;
+          const v = valueByLoc ? valueByLoc[loc] : null;
+          return v == null
+            ? `${loc}: outside benchmark`
+            : `${loc}: ${fmtMap(v)}`;
+        });
+    }
+
+    function mapYearLabelText(yearKey) {
+      return yearKey === MAP_YEAR_MEAN ? "Mean (all years)" : String(yearKey);
+    }
+
+    function yearsForModel(slice, model) {
+      const predByYear = ((slice.models_by_year || {})[model]) || {};
+      const actualByYear = slice.actual_by_year || {};
+      const predYears = Object.keys(predByYear);
+      // Only years with both ground truth and model preds (avoids empty maps
+      // when naive baselines use a shifted year window, e.g. AU wheat 2019 vs 2024).
+      const both = predYears.length
+        ? predYears.filter((y) => Object.keys(actualByYear[y] || {}).length > 0)
+        : Object.keys(actualByYear);
+      if (both.length) return both.sort();
+      if (predYears.length) return predYears.sort();
+      // Fallback when only pooled means exist (no per-year preds).
+      return Array.isArray(slice.years) ? slice.years.map(String) : [];
+    }
+
+    function setupMapYearSlider(slice, model) {
+      const years = yearsForModel(slice, model);
+      mapYearKeys = years.length > 1 ? [MAP_YEAR_MEAN, ...years] : years;
+      mapYearSelection = mapYearKeys[0] || MAP_YEAR_MEAN;
+
+      if (mapYearKeys.length <= 1) {
+        mapYearControls.style.display = "none";
+        return;
+      }
+
+      mapYearControls.style.display = "";
+      mapYearSlider.min = "0";
+      mapYearSlider.max = String(mapYearKeys.length - 1);
+      mapYearSlider.step = "1";
+      mapYearSlider.value = "0";
+      mapYearLabel.textContent = mapYearLabelText(mapYearSelection);
+    }
+
+    function mapValuesForSelection(slice, model, yearKey) {
+      if (yearKey === MAP_YEAR_MEAN) {
+        return {
+          actual: slice.actual || {},
+          pred: (slice.models || {})[model] || {},
+        };
+      }
+      return {
+        actual: (slice.actual_by_year || {})[yearKey] || {},
+        pred: ((slice.models_by_year || {})[model] || {})[yearKey] || {},
+      };
+    }
+
+    function pooledMapExtent(slice, model) {
+      const vals = [];
+      const pushMap = (m) => {
+        Object.values(m || {}).forEach(v => {
+          if (v != null && !Number.isNaN(v)) vals.push(v);
+        });
+      };
+      pushMap(slice.actual);
+      pushMap((slice.models || {})[model]);
+      Object.values(slice.actual_by_year || {}).forEach(pushMap);
+      Object.values((slice.models_by_year || {})[model] || {}).forEach(pushMap);
+      if (!vals.length) return null;
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      const pad = (hi - lo) * 0.05 || 0.5;
+      return [lo - pad, hi + pad];
+    }
+
+    function renderDynamicMapLayers(dataset, model, yearKey) {
+      const slice = (MAP_DATA.datasets || {})[dataset];
+      if (!slice || !mapFeaturesCache) return false;
+      const { actual, pred } = mapValuesForSelection(slice, model, yearKey);
+      if (!regionsWithData(mapFeaturesCache, actual).length
+          && !regionsWithData(mapFeaturesCache, pred).length) {
+        return false;
+      }
+      const extent = pooledMapExtent(slice, model);
+      const yearSuffix = yearKey === MAP_YEAR_MEAN ? "mean yield" : yearKey;
+      if (mapCaptionLeftDyn) {
+        mapCaptionLeftDyn.textContent = `Ground truth (${yearSuffix})`;
+      }
+      if (mapCaptionRightDyn) {
+        mapCaptionRightDyn.textContent = `Model prediction (${model}, ${yearSuffix})`;
+      }
+      renderRegionChoropleth(
+        regionMapActual,
+        mapFeaturesCache,
+        actual,
+        extent,
+        `Ground truth (${yearSuffix})`,
+      );
+      renderRegionChoropleth(
+        regionMapPred,
+        mapFeaturesCache,
+        pred,
+        extent,
+        `Model prediction (${model}, ${yearSuffix})`,
+      );
+      if (extent) {
+        const label = `${fmtMap(extent[0])} → ${fmtMap(extent[1])}`;
+        regionMapLegendActual.textContent = label;
+        regionMapLegendPred.textContent = label;
+      }
+      return true;
+    }
+
+    async function renderDynamicMaps(dataset, model) {
+      const slice = (MAP_DATA.datasets || {})[dataset];
+      if (!slice) return false;
+      const country = slice.country;
+      setupMapYearSlider(slice, model);
+      if (mapFeaturesCacheCountry !== country) {
+        mapFeaturesCache = await loadCountryGeojson(country);
+        mapFeaturesCacheCountry = country;
+      }
+      if (!mapFeaturesCache) return false;
+      return renderDynamicMapLayers(dataset, model, mapYearSelection);
+    }
+
+    mapYearSlider.addEventListener("input", () => {
+      if (!selectedCell || activePanel !== "maps") return;
+      const idx = Number(mapYearSlider.value);
+      mapYearSelection = mapYearKeys[idx] || MAP_YEAR_MEAN;
+      mapYearLabel.textContent = mapYearLabelText(mapYearSelection);
+      renderDynamicMapLayers(selectedCell.dataset, selectedCell.model, mapYearSelection);
+    });
+
+    function showMapMode(useDynamic) {
+      mapGridDynamic.style.display = useDynamic ? "" : "none";
+      imgGrid.style.display = useDynamic ? "none" : "";
+      mapYearControls.style.display = useDynamic && mapYearKeys.length > 1 ? "" : "none";
+    }
+
+    function showShapMode(show) {
+      shapPanel.style.display = show ? "" : "none";
+      imgGrid.style.display = show ? "none" : "";
+      mapGridDynamic.style.display = "none";
+      mapYearControls.style.display = "none";
+    }
+
+    function renderShapPanel(dataset, model) {
+      const key = shapKey(dataset, model);
+      const entry = (SHAP_DATA.by_key || {})[key];
+      shapMetaChart.innerHTML = "";
+      shapFeaturesBody.innerHTML = "";
+      if (!entry) {
+        shapCaption.textContent = shapUnavailableMessage(model);
+        return;
+      }
+      shapCaption.textContent =
+        `${entry.model_label || entry.model} · ${entry.explainer} · `
+        + `${entry.n_origins} walk-forward origin(s) · meta-group shares (median % of |SHAP|)`;
+
+      const groups = (entry.meta_groups || []).slice(0, 12);
+      if (groups.length) {
+        const width = Math.min(720, shapPanel.clientWidth || 720);
+        const height = Math.max(180, groups.length * 28 + 24);
+        const margin = { top: 8, right: 48, bottom: 8, left: 120 };
+        const svg = d3.select(shapMetaChart)
+          .append("svg")
+          .attr("width", width)
+          .attr("height", height);
+        const x = d3.scaleLinear()
+          .domain([0, d3.max(groups, d => d.share_pct) || 1])
+          .range([0, width - margin.left - margin.right]);
+        const y = d3.scaleBand()
+          .domain(groups.map(d => d.name))
+          .range([0, height - margin.top - margin.bottom])
+          .padding(0.18);
+        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+        g.selectAll("rect")
+          .data(groups)
+          .join("rect")
+          .attr("x", 0)
+          .attr("y", d => y(d.name))
+          .attr("width", d => x(d.share_pct))
+          .attr("height", y.bandwidth())
+          .attr("fill", "#0969da")
+          .attr("rx", 3);
+        g.selectAll(".bar-label")
+          .data(groups)
+          .join("text")
+          .attr("class", "bar-label")
+          .attr("x", -8)
+          .attr("y", d => y(d.name) + y.bandwidth() / 2)
+          .attr("dy", "0.35em")
+          .attr("text-anchor", "end")
+          .text(d => d.name);
+        g.selectAll(".bar-value")
+          .data(groups)
+          .join("text")
+          .attr("class", "bar-value")
+          .attr("x", d => x(d.share_pct) + 6)
+          .attr("y", d => y(d.name) + y.bandwidth() / 2)
+          .attr("dy", "0.35em")
+          .text(d => `${d.share_pct.toFixed(1)}%`);
+      }
+
+      const features = entry.top_features || [];
+      for (const feat of features) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td class="num">${feat.rank}</td>`
+          + `<td>${feat.name}</td>`
+          + `<td class="num">${Number(feat.mean_abs_shap).toFixed(4)}</td>`;
+        shapFeaturesBody.appendChild(tr);
+      }
+    }
+
+    const METRIC_COLUMNS = [
+      { key: "region_year_r2", label: "R²", group: "Region-Year", higherBetter: true, title: "R² on all region-year rows (absolute prediction quality)" },
+      { key: "region_year_nrmse", label: "NRMSE", group: "Region-Year", higherBetter: false, title: "Normalized RMSE on absolute yields" },
+      {
+        key: "spatial_r",
+        label: "r<br><span class=\"metric-sub\">r/year</span>",
+        group: "Spatial",
+        higherBetter: true,
+        title: "Slice by year; Pearson r across regions each year; median across years (years with ≥3 regions)",
+      },
+      {
+        key: "spatial_r_agg",
+        label: "r<br><span class=\"metric-sub\">agg</span>",
+        group: "Spatial",
+        higherBetter: true,
+        title: "Mean yield across years per region; one Pearson r across regions",
+      },
+      {
+        key: "temporal_r",
+        label: "r<br><span class=\"metric-sub\">med/reg</span>",
+        group: "Temporal",
+        higherBetter: true,
+        title: "Slice by region; Pearson r across years per region; median across regions (regions with ≥3 years)",
+      },
+      {
+        key: "temporal_r_agg",
+        label: "r<br><span class=\"metric-sub\">agg</span>",
+        group: "Temporal",
+        higherBetter: true,
+        title: "Mean yield across regions each year; one Pearson r across years",
+      },
+      {
+        key: "anomaly_r",
+        label: "r<br><span class=\"metric-sub\">anom/reg</span>",
+        group: "Anomaly",
+        higherBetter: true,
+        title: "Per region: Pearson r on location-demeaned yields; median across regions",
+      },
+      {
+        key: "anomaly_r_pooled",
+        label: "r<br><span class=\"metric-sub\">pooled</span>",
+        group: "Anomaly",
+        higherBetter: true,
+        title: "Pooled Pearson r on all location-de-meaned yields",
+      },
+    ];
+
+    const R_FIXED = { min: -1, max: 1, higherBetter: true };
+
+    // Absolute color scales — comparable across rows and dashboards.
+    const FIXED_SCALES = {
+      region_year_r2: { min: 0, max: 1, higherBetter: true },
+      region_year_nrmse: { min: 0, max: 0.5, higherBetter: false },
+      spatial_r: R_FIXED,
+      spatial_r_agg: R_FIXED,
+      temporal_r: R_FIXED,
+      temporal_r_agg: R_FIXED,
+      anomaly_r: R_FIXED,
+      anomaly_r_pooled: R_FIXED,
+    };
+
+    let selectedCell = null;
+    let activePanel = "maps";
+    let allRows = [];
+    let sortKey = "region_year_nrmse";
+    let sortDir = "asc";
+    let colorMode = "fixed";
+    let deepLink = readDeepLink();
+
+    function readDeepLink() {
+      const params = new URLSearchParams(window.location.search);
+      const model = (params.get("model") || "").trim();
+      if (!model) return null;
+      return {
+        model,
+        dataset: (params.get("dataset") || "").trim(),
+        panel: (params.get("panel") || "").trim(),
+      };
+    }
+
+    function rowMatchesDeepLink(row) {
+      if (!deepLink?.model) return false;
+      if (row.model.toLowerCase() !== deepLink.model.toLowerCase()) return false;
+      if (deepLink.dataset && row.dataset.toLowerCase() !== deepLink.dataset.toLowerCase()) {
+        return false;
+      }
+      return true;
+    }
+
+    function applyDeepLinkToFilters() {
+      if (!deepLink?.model) return null;
+      const match = allRows.find(rowMatchesDeepLink);
+      if (!match) return null;
+      modelFilter.value = match.model;
+      if (deepLink.dataset) datasetFilter.value = match.dataset;
+      if (["maps", "scatter", "temporal"].includes(deepLink.panel)) {
+        activePanel = deepLink.panel;
+        panelButtons.forEach(b => {
+          b.classList.toggle("active", b.dataset.panel === activePanel);
+        });
+      }
+      return match;
+    }
+
+    function parseDataset(dataset) {
+      const idx = dataset.lastIndexOf("_");
+      if (idx <= 0) return { crop: dataset, country: "" };
+      return { crop: dataset.slice(0, idx), country: dataset.slice(idx + 1) };
+    }
+
+    function formatValue(v) {
+      return (v === null || v === undefined || Number.isNaN(v)) ? "-" : v.toFixed(3);
+    }
+
+    function metricStd(row, key) {
+      const v = row.metrics[`${key}_std`];
+      return (v === null || v === undefined || Number.isNaN(v)) ? null : v;
+    }
+
+    function formatMetricCell(row, key) {
+      const v = metricValue(row, key);
+      if (v === null) return "-";
+      const std = metricStd(row, key);
+      if (std === null) return formatValue(v);
+      return `${formatValue(v)}<span class="metric-std">±${formatValue(std)}</span>`;
+    }
+
+    function metricValue(row, key) {
+      const v = row.metrics[key];
+      return (v === null || v === undefined || Number.isNaN(v)) ? null : v;
+    }
+
+    function compareRows(a, b) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      const getSortVal = (row) => {
+        if (sortKey === "dataset") return row.dataset;
+        if (sortKey === "model") return row.model;
+        if (sortKey === "n_regions") return row.n_regions;
+        if (sortKey === "n_years") return row.n_years;
+        if (sortKey === "n_samples") return row.n_samples;
+        return metricValue(row, sortKey);
+      };
+      const av = getSortVal(a);
+      const bv = getSortVal(b);
+      const aMissing = av === null || av === undefined || av === "";
+      const bMissing = bv === null || bv === undefined || bv === "";
+      if (aMissing && bMissing) return a.model.localeCompare(b.model);
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      if (typeof av === "string") return dir * av.localeCompare(bv);
+      return dir * (av - bv);
+    }
+
+    function heatColor(value, min, max, higherBetter) {
+      if (value === null || min === null || max === null || min === max) return null;
+      const t = higherBetter
+        ? (value - min) / (max - min)
+        : (max - value) / (max - min);
+      const clamped = Math.max(0, Math.min(1, t));
+      const hue = Math.round(clamped * 120);
+      const alpha = 0.12 + clamped * 0.28;
+      return `hsla(${hue}, 55%, 42%, ${alpha.toFixed(2)})`;
+    }
+
+    function columnStats(rows, key) {
+      const vals = rows.map(r => metricValue(r, key)).filter(v => v !== null);
+      if (!vals.length) return { min: null, max: null };
+      return { min: Math.min(...vals), max: Math.max(...vals) };
+    }
+
+    function scaleForColumn(key, rows) {
+      if (colorMode === "fixed" && FIXED_SCALES[key]) {
+        return FIXED_SCALES[key];
+      }
+      const col = METRIC_COLUMNS.find(c => c.key === key);
+      const stats = columnStats(rows, key);
+      return {
+        min: stats.min,
+        max: stats.max,
+        higherBetter: col ? col.higherBetter : true,
+      };
+    }
+
+    function buildRows() {
+      const grouped = new Map();
+      for (const rec of DATA) {
+        const key = `${rec.dataset}|||${rec.model}`;
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            dataset: rec.dataset,
+            model: rec.model,
+            n_regions: rec.n_regions,
+            n_years: rec.n_years,
+            n_samples: rec.n_samples,
+            images: rec.images || {},
+            metrics: {},
+          });
+        }
+        const metricKey = `${rec.view}_${rec.metric}`;
+        grouped.get(key).metrics[metricKey] = rec.value;
+        if (rec.value_std !== null && rec.value_std !== undefined && !Number.isNaN(rec.value_std)) {
+          grouped.get(key).metrics[`${metricKey}_std`] = rec.value_std;
+        }
+      }
+      allRows = Array.from(grouped.values());
+    }
+
+    function filteredRows() {
+      const ds = datasetFilter.value;
+      const modelQ = modelFilter.value.trim().toLowerCase();
+      let rows = allRows.filter(r => {
+        if (ds && r.dataset !== ds) return false;
+        if (modelQ && !r.model.toLowerCase().includes(modelQ)) return false;
+        return true;
+      });
+      rows.sort((a, b) => {
+        if (groupDatasets.checked && sortKey !== "dataset") {
+          const byDs = a.dataset.localeCompare(b.dataset);
+          if (byDs !== 0) return byDs;
+        }
+        return compareRows(a, b);
+      });
+      return rows;
+    }
+
+    function renderDatasetCell(row, showLabel) {
+      if (!showLabel) return `<td class="dataset-cell continued">.</td>`;
+      const parts = parseDataset(row.dataset);
+      const country = parts.country
+        ? `<span class="badge country">${parts.country}</span>`
+        : "";
+      return `<td class="dataset-cell"><span class="dataset-parts"><span class="badge">${parts.crop}</span>${country}</span></td>`;
+    }
+
+    function renderHeatmap({ preserveSelection = false } = {}) {
+      const prev = preserveSelection && selectedCell
+        ? `${selectedCell.dataset}|||${selectedCell.model}`
+        : null;
+
+      const datasets = Array.from(new Set(allRows.map(r => r.dataset))).sort();
+      const models = Array.from(new Set(allRows.map(r => r.model))).sort();
+      const priorDataset = datasetFilter.value;
+      const priorModel = modelFilter.value;
+
+      datasetFilter.innerHTML = `<option value="">All datasets</option>` +
+        datasets.map(d => `<option value="${d}">${d}</option>`).join("");
+
+      let deepTarget = null;
+      if (!preserveSelection && deepLink?.model) {
+        deepTarget = applyDeepLinkToFilters();
+      } else {
+        if (priorDataset && datasets.includes(priorDataset)) {
+          datasetFilter.value = priorDataset;
+        }
+        modelFilter.value = priorModel;
+      }
+
+      const rows = filteredRows();
+
+      coverageInfo.textContent =
+        `Showing ${rows.length} of ${allRows.length} rows (datasets=${datasets.length}, models=${models.length})`;
+
+      const stats = {};
+      for (const col of METRIC_COLUMNS) {
+        stats[col.key] = scaleForColumn(col.key, rows);
+      }
+
+      const sortMark = (key) => sortKey === key
+        ? `<span class="sort-mark">${sortDir === "asc" ? "▲" : "▼"}</span>`
+        : `<span class="sort-mark"></span>`;
+
+      let html = `
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2" class="sortable" data-sort="dataset">Dataset ${sortMark("dataset")}</th>
+      <th rowspan="2" class="sortable" data-sort="model">Model ${sortMark("model")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_regions">Regions ${sortMark("n_regions")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_years">Years ${sortMark("n_years")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_samples">Samples ${sortMark("n_samples")}</th>
+      <th colspan="2" class="group-head">Region-Year</th>
+      <th colspan="2" class="group-head" title="Spatial pattern recovery">Spatial</th>
+      <th colspan="2" class="group-head" title="Temporal dynamics recovery">Temporal</th>
+      <th colspan="2" class="group-head">Anomaly</th>
+    </tr>
+    <tr>`;
+      for (const col of METRIC_COLUMNS) {
+        const tip = col.title ? ` title="${col.title}"` : "";
+        html += `<th class="sortable" data-sort="${col.key}"${tip}>${col.label} ${sortMark(col.key)}</th>`;
+      }
+      html += `</tr></thead><tbody>`;
+
+      let prevDataset = null;
+      rows.forEach((row, idx) => {
+        const groupClass = idx % 2 === 0 ? "group-a" : "group-b";
+        const showDataset = !groupDatasets.checked || row.dataset !== prevDataset || datasetFilter.value;
+        prevDataset = row.dataset;
+        const payload = encodeURIComponent(JSON.stringify(row));
+        html += `<tr class="metric-row ${groupClass}" data-row="${payload}">`;
+        html += renderDatasetCell(row, showDataset);
+        html += `<td>${row.model}</td><td>${row.n_regions ?? "—"}</td><td>${row.n_years ?? "—"}</td><td>${row.n_samples ?? "—"}</td>`;
+        for (const col of METRIC_COLUMNS) {
+          const v = metricValue(row, col.key);
+          const scale = stats[col.key];
+          const bg = heatColor(v, scale.min, scale.max, scale.higherBetter);
+          const style = bg ? ` style="background-color:${bg}"` : "";
+          const cls = v === null ? "metric-cell missing" : "metric-cell";
+          html += `<td class="${cls}"${style}>${formatMetricCell(row, col.key)}</td>`;
+        }
+        html += `</tr>`;
+      });
+      html += "</tbody></table>";
+      heatmapWrap.innerHTML = html;
+
+      const metricRows = Array.from(heatmapWrap.querySelectorAll("tr.metric-row"));
+      metricRows.forEach(tr => {
+        tr.addEventListener("click", () => {
+          metricRows.forEach(r => r.classList.remove("selected"));
+          tr.classList.add("selected");
+          selectedCell = JSON.parse(decodeURIComponent(tr.dataset.row));
+          refreshDrill();
+        });
+      });
+
+      heatmapWrap.querySelectorAll("th.sortable").forEach(th => {
+        th.addEventListener("click", () => {
+          const key = th.dataset.sort;
+          if (sortKey === key) {
+            sortDir = sortDir === "asc" ? "desc" : "asc";
+          } else {
+            sortKey = key;
+            const col = METRIC_COLUMNS.find(c => c.key === key);
+            if (col) {
+              sortDir = col.higherBetter ? "desc" : "asc";
+            } else if (key === "dataset" || key === "model") {
+              sortDir = "asc";
+            } else {
+              sortDir = "desc";
+            }
+          }
+          renderHeatmap({ preserveSelection: true });
+        });
+      });
+
+      if (prev) {
+        const target = metricRows.find(r => {
+          const rec = JSON.parse(decodeURIComponent(r.dataset.row));
+          return `${rec.dataset}|||${rec.model}` === prev;
+        });
+        if (target) {
+          target.click();
+          return;
+        }
+      }
+
+      if (deepTarget) {
+        const want = `${deepTarget.dataset}|||${deepTarget.model}`;
+        const target = metricRows.find(r => {
+          const rec = JSON.parse(decodeURIComponent(r.dataset.row));
+          return `${rec.dataset}|||${rec.model}` === want;
+        });
+        if (target) {
+          deepLink = null;
+          target.click();
+          document.getElementById("drill-down")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+
+      if (metricRows.length > 0) {
+        if (!deepLink) metricRows[0].click();
+      } else {
+        selectedCell = null;
+        drillImageA.removeAttribute("src");
+        drillImageB.removeAttribute("src");
+        missingNote.textContent = "No rows match the current filters.";
+        selectionLabel.textContent = "No selection.";
+        updateShapButtonState();
+      }
+    }
+
+    function refreshDrill() {
+      updateShapButtonState();
+      if (!selectedCell) return;
+      const parts = parseDataset(selectedCell.dataset);
+      const label = parts.country
+        ? `${parts.crop} (${parts.country}) · ${selectedCell.model}`
+        : `${selectedCell.dataset} · ${selectedCell.model}`;
+      selectionLabel.textContent = label;
+      const images = selectedCell.images || {};
+      missingNote.textContent = "";
+
+      if (activePanel === "maps") {
+        showShapMode(false);
+        if (!HAS_DYNAMIC_MAPS || !(MAP_DATA.datasets || {})[selectedCell.dataset]) {
+          showMapMode(false);
+          missingNote.textContent =
+            "No dynamic map data for this dataset. Re-run collect with preds and polygons.";
+          return;
+        }
+        showMapMode(true);
+        renderDynamicMaps(selectedCell.dataset, selectedCell.model).then(ok => {
+          if (!ok) {
+            showMapMode(false);
+            const href = ((MAP_DATA.geojson_by_country || {})[
+              (MAP_DATA.datasets[selectedCell.dataset] || {}).country
+            ]) || "assets/regions_*.geojson";
+            missingNote.textContent =
+              `Could not load map geometry (${href} missing or failed). `
+              + "Re-run collect + publish so regions_*.geojson is bundled in assets/.";
+          }
+        }).catch(err => {
+          showMapMode(false);
+          missingNote.textContent = `Map error: ${err}`;
+        });
+        return;
+      }
+
+      if (activePanel === "shap") {
+        showShapMode(true);
+        renderShapPanel(selectedCell.dataset, selectedCell.model);
+        return;
+      }
+
+      showShapMode(false);
+      showMapMode(false);
+      imgGrid.classList.remove("two");
+      drillColB.style.display = "none";
+      mapCaptionLeft.style.display = "none";
+      mapCaptionRight.style.display = "none";
+      drillImageB.removeAttribute("src");
+
+      const path = images[activePanel] || "";
+      if (!path) {
+        drillImageA.removeAttribute("src");
+        missingNote.textContent = `No image found for panel: ${activePanel}`;
+        return;
+      }
+      drillImageA.src = path;
+    }
+
+    datasetFilter.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    modelFilter.addEventListener("input", () => renderHeatmap({ preserveSelection: true }));
+    groupDatasets.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    colorModeSelect.addEventListener("change", () => {
+      colorMode = colorModeSelect.value;
+      renderHeatmap({ preserveSelection: true });
+    });
+
+    panelButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (btn.disabled || btn.classList.contains("is-disabled")) return;
+        panelButtons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activePanel = btn.dataset.panel;
+        refreshDrill();
+      });
+    });
+
+    drillImageA.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load image. Re-run collect with plot enabled to regenerate dashboard assets.";
+    });
+    drillImageB.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load prediction map. Re-run collect with plot enabled.";
+    });
+
+    buildRows();
+    renderHeatmap();
+    updateShapButtonState();
+  </script>

@@ -1,0 +1,1318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CY-Bench Multi-Model Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --card: #fff;
+      --border: #d8dee4;
+      --text: #1f2328;
+      --muted: #656d76;
+      --accent: #0969da;
+      --accent-soft: #ddf4ff;
+      --group-a: #f6f8fa;
+      --group-b: #fff;
+      --good: #1a7f37;
+      --bad: #cf222e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1.25rem;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .page { max-width: 1400px; margin: 0 auto; }
+    h2 { margin: 0 0 1rem; font-size: 1.35rem; font-weight: 600; }
+    h3 { margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06);
+    }
+    .card + .card { margin-top: 1rem; }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .table-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      align-items: center;
+      margin: 0.5rem 0 0.75rem;
+    }
+    .table-controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .table-controls select,
+    .table-controls input[type="search"] {
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font: inherit;
+      background: #fff;
+    }
+    .table-controls input[type="search"] { min-width: 10rem; }
+    .table-scroll {
+      overflow: auto;
+      max-height: min(70vh, 720px);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.86rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.45rem 0.55rem;
+      text-align: center;
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) { text-align: left; }
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f3f4f6;
+      font-weight: 600;
+    }
+    thead tr:nth-child(2) th { top: 2.1rem; }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    th.sortable:hover { background: #e8eaed; }
+    th .sort-mark {
+      display: inline-block;
+      width: 0.9rem;
+      color: var(--accent);
+      font-size: 0.75rem;
+    }
+    th.group-head {
+      border-bottom: 2px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    th.group-head .group-hint {
+      display: block;
+      font-weight: 400;
+      font-size: 0.65rem;
+      text-transform: none;
+      letter-spacing: 0;
+      margin-top: 0.12rem;
+      line-height: 1.2;
+    }
+    th .metric-sub {
+      font-weight: 500;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    tr.metric-row { cursor: pointer; }
+    tr.metric-row:hover td { filter: brightness(0.97); }
+    tr.metric-row.selected td {
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    tr.group-a td { background: var(--group-a); }
+    tr.group-b td { background: var(--group-b); }
+    td.dataset-cell {
+      font-weight: 600;
+      color: var(--accent);
+    }
+    td.dataset-cell.continued {
+      color: transparent;
+      user-select: none;
+    }
+    td.metric-cell { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 0.88rem; }
+    td.metric-cell.missing { color: #9a9a9a; }
+    td.metric-cell .metric-std { color: var(--muted); font-size: 0.92em; }
+    .dataset-parts {
+      display: flex;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .badge.country { background: #f0f0f0; color: #444; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0; }
+    .toolbar button {
+      padding: 0.4rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .toolbar button:hover { background: #f6f8fa; }
+    .toolbar button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .toolbar button:disabled,
+    .toolbar button.is-disabled {
+      opacity: 1;
+      cursor: not-allowed;
+      background: #eef0f2;
+      color: #8b949e;
+      border-color: #d0d7de;
+      border-style: dashed;
+    }
+    .toolbar button:disabled:hover,
+    .toolbar button.is-disabled:hover {
+      background: #eef0f2;
+    }
+    .toolbar button.active:disabled,
+    .toolbar button.active.is-disabled {
+      background: #eef0f2;
+      color: #8b949e;
+      border-color: #d0d7de;
+    }
+    .img-grid { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
+    .img-grid.two { grid-template-columns: 1fr 1fr; }
+    .img-grid img {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+      display: block;
+      background: #fff;
+    }
+    .map-caption {
+      font-size: 0.82rem;
+      margin-bottom: 0.35rem;
+      text-align: center;
+    }
+    @media (max-width: 900px) {
+      .img-grid.two { grid-template-columns: 1fr; }
+    }
+    img {
+      max-width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      min-height: 120px;
+      background: #fff;
+    }
+    .region-map-wrap { width: 100%; overflow: hidden; min-height: 280px; }
+    .region-map-wrap svg { display: block; width: 100%; height: auto; }
+    .region-map-wrap .region {
+      stroke: #000;
+      stroke-width: 0.2px;
+      transition: fill 0.12s;
+    }
+    .region-map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin-top: 0.35rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      justify-content: center;
+    }
+    .region-map-gradient {
+      display: inline-block;
+      width: 140px;
+      height: 10px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: linear-gradient(to right, #440154, #31688e, #35b779, #fde725);
+    }
+    #shap-panel { margin-top: 0.5rem; }
+    #shap-meta-chart { min-height: 220px; margin-bottom: 1rem; }
+    #shap-meta-chart .bar-label { font-size: 0.82rem; fill: var(--text); }
+    #shap-meta-chart .bar-value { font-size: 0.75rem; fill: var(--muted); }
+    #shap-features-table { font-size: 0.84rem; }
+    #shap-features-table th, #shap-features-table td { text-align: left; }
+    #shap-features-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .map-year-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem 1rem;
+      margin: 0.35rem 0 0.75rem;
+      font-size: 0.88rem;
+    }
+    .map-year-controls label {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+    }
+    .map-year-controls input[type="range"] {
+      width: min(320px, 100%);
+      accent-color: var(--accent);
+    }
+    #map-year-label {
+      min-width: 7rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h2>CY-Bench multi-model local dashboard</h2>
+    <div class="card">
+      <h3>Model comparison</h3>
+      <div class="muted" id="coverage-info"></div>
+      <div class="table-controls">
+        <label>
+          Dataset
+          <select id="dataset-filter">
+            <option value="">All datasets</option>
+          </select>
+        </label>
+        <label>
+          Model
+          <input type="search" id="model-filter" placeholder="Filter models…" />
+        </label>
+        <label>
+          <input type="checkbox" id="group-datasets" checked />
+          Group by dataset
+        </label>
+        <label>
+          Colors
+          <select id="color-mode">
+            <option value="fixed" selected>Fixed scale (absolute)</option>
+            <option value="column">Relative to filtered rows</option>
+          </select>
+        </label>
+      </div>
+      <div class="muted" style="margin-bottom: 0.5rem;">Click a column header to sort. Lower NRMSE is better; higher R² and r are better. Pattern axes: spatial r/year, temporal r/reg, anomaly anom/reg or pooled. Fixed colors: NRMSE 0–0.5, R² 0–1, r −1–1.</div>
+      <div class="table-scroll" id="heatmap-wrap"></div>
+    </div>
+
+    <div class="card" id="drill-down">
+      <h3>Drill-down plots</h3>
+      <div id="selection-label" class="muted">Click a table row to inspect plots.</div>
+      <div class="toolbar">
+        <button data-panel="maps" class="active">Maps</button>
+        <button data-panel="scatter">Scatter</button>
+        <button data-panel="temporal">Temporal</button>
+        <button data-panel="shap" id="shap-panel-btn" type="button" disabled title="SHAP">SHAP</button>
+      </div>
+      <div id="missing-note" class="muted"></div>
+      <div id="shap-panel" style="display:none;">
+        <div class="muted" id="shap-caption"></div>
+        <div id="shap-meta-chart"></div>
+        <table id="shap-features-table">
+          <thead>
+            <tr><th>Rank</th><th>Feature</th><th>Median |SHAP|</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="map-year-controls" class="map-year-controls" style="display:none;">
+        <label for="map-year-slider">
+          Map year
+          <input type="range" id="map-year-slider" min="0" max="0" step="1" value="0" />
+          <span id="map-year-label">Mean (all years)</span>
+        </label>
+      </div>
+      <div id="map-grid-dynamic" class="img-grid two" style="display:none;">
+        <div>
+          <div id="map-caption-left-dyn" class="map-caption muted">Ground truth (mean yield)</div>
+          <div id="region-map-actual" class="region-map-wrap"></div>
+          <div class="region-map-legend"><span class="region-map-gradient" aria-hidden="true"></span><span id="region-map-legend-actual">—</span></div>
+        </div>
+        <div>
+          <div id="map-caption-right-dyn" class="map-caption muted">Model prediction</div>
+          <div id="region-map-pred" class="region-map-wrap"></div>
+          <div class="region-map-legend"><span class="region-map-gradient" aria-hidden="true"></span><span id="region-map-legend-pred">—</span></div>
+        </div>
+      </div>
+      <div id="img-grid" class="img-grid two">
+        <div>
+          <div id="map-caption-left" class="map-caption muted">Ground truth (mean yield)</div>
+          <img id="drill-image-a" alt="Ground truth map" />
+        </div>
+        <div id="drill-col-b">
+          <div id="map-caption-right" class="map-caption muted">Model prediction</div>
+          <img id="drill-image-b" alt="Model prediction map" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DATA = [{"model": "autoformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter.png", "temporal": "assets/maize_ML_temporal.png"}, "view": "region_year", "metric": "r2", "value": -0.121, "value_std": 0.1263}, {"model": "autoformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter.png", "temporal": "assets/maize_ML_temporal.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1291, "value_std": 0.0074}, {"model": "autoformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter.png", "temporal": "assets/maize_ML_temporal.png"}, "view": "spatial", "metric": "r", "value": 0.3526, "value_std": 0.0482}, {"model": "autoformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter.png", "temporal": "assets/maize_ML_temporal.png"}, "view": "spatial", "metric": "r_agg", "value": 0.4875, "value_std": 0.038}, {"model": "autoformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter.png", "temporal": "assets/maize_ML_temporal.png"}, "view": "temporal", "metric": "r", "value": 0.1621, "value_std": 0.0725}, {"model": "autoformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter.png", "temporal": "assets/maize_ML_temporal.png"}, "view": "temporal", "metric": "r_agg", "value": 0.2996, "value_std": 0.042}, {"model": "autoformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter.png", "temporal": "assets/maize_ML_temporal.png"}, "view": "anomaly", "metric": "r", "value": 0.1621, "value_std": 0.0725}, {"model": "autoformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter.png", "temporal": "assets/maize_ML_temporal.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.1132, "value_std": 0.0139}, {"model": "average_yield", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_82860e90.png", "temporal": "assets/maize_ML_temporal_f6ed99b3.png"}, "view": "region_year", "metric": "r2", "value": -1.7496, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_82860e90.png", "temporal": "assets/maize_ML_temporal_f6ed99b3.png"}, "view": "region_year", "metric": "nrmse", "value": 0.2024, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_82860e90.png", "temporal": "assets/maize_ML_temporal_f6ed99b3.png"}, "view": "spatial", "metric": "r", "value": 0.6444, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_82860e90.png", "temporal": "assets/maize_ML_temporal_f6ed99b3.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7585, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_82860e90.png", "temporal": "assets/maize_ML_temporal_f6ed99b3.png"}, "view": "temporal", "metric": "r", "value": 0.049, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_82860e90.png", "temporal": "assets/maize_ML_temporal_f6ed99b3.png"}, "view": "temporal", "metric": "r_agg", "value": 0.2794, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_82860e90.png", "temporal": "assets/maize_ML_temporal_f6ed99b3.png"}, "view": "anomaly", "metric": "r", "value": 0.049, "value_std": 0.0}, {"model": "average_yield", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_82860e90.png", "temporal": "assets/maize_ML_temporal_f6ed99b3.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.0193, "value_std": 0.0}, {"model": "cnn_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_4569debb.png", "temporal": "assets/maize_ML_temporal_a5687baf.png"}, "view": "region_year", "metric": "r2", "value": -0.0855, "value_std": 0.2625}, {"model": "cnn_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_4569debb.png", "temporal": "assets/maize_ML_temporal_a5687baf.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1264, "value_std": 0.0155}, {"model": "cnn_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_4569debb.png", "temporal": "assets/maize_ML_temporal_a5687baf.png"}, "view": "spatial", "metric": "r", "value": 0.431, "value_std": 0.0322}, {"model": "cnn_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_4569debb.png", "temporal": "assets/maize_ML_temporal_a5687baf.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6265, "value_std": 0.0354}, {"model": "cnn_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_4569debb.png", "temporal": "assets/maize_ML_temporal_a5687baf.png"}, "view": "temporal", "metric": "r", "value": 0.3542, "value_std": 0.2322}, {"model": "cnn_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_4569debb.png", "temporal": "assets/maize_ML_temporal_a5687baf.png"}, "view": "temporal", "metric": "r_agg", "value": 0.518, "value_std": 0.3294}, {"model": "cnn_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_4569debb.png", "temporal": "assets/maize_ML_temporal_a5687baf.png"}, "view": "anomaly", "metric": "r", "value": 0.3542, "value_std": 0.2322}, {"model": "cnn_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_4569debb.png", "temporal": "assets/maize_ML_temporal_a5687baf.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.2536, "value_std": 0.1542}, {"model": "dlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_221b02ea.png", "temporal": "assets/maize_ML_temporal_9df7d10a.png"}, "view": "region_year", "metric": "r2", "value": -0.5731, "value_std": 0.9493}, {"model": "dlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_221b02ea.png", "temporal": "assets/maize_ML_temporal_9df7d10a.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1487, "value_std": 0.0406}, {"model": "dlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_221b02ea.png", "temporal": "assets/maize_ML_temporal_9df7d10a.png"}, "view": "spatial", "metric": "r", "value": 0.3187, "value_std": 0.0968}, {"model": "dlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_221b02ea.png", "temporal": "assets/maize_ML_temporal_9df7d10a.png"}, "view": "spatial", "metric": "r_agg", "value": 0.5619, "value_std": 0.0656}, {"model": "dlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_221b02ea.png", "temporal": "assets/maize_ML_temporal_9df7d10a.png"}, "view": "temporal", "metric": "r", "value": 0.1629, "value_std": 0.3672}, {"model": "dlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_221b02ea.png", "temporal": "assets/maize_ML_temporal_9df7d10a.png"}, "view": "temporal", "metric": "r_agg", "value": 0.2657, "value_std": 0.6001}, {"model": "dlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_221b02ea.png", "temporal": "assets/maize_ML_temporal_9df7d10a.png"}, "view": "anomaly", "metric": "r", "value": 0.1629, "value_std": 0.3672}, {"model": "dlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_221b02ea.png", "temporal": "assets/maize_ML_temporal_9df7d10a.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.1116, "value_std": 0.2093}, {"model": "informer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_5035835b.png", "temporal": "assets/maize_ML_temporal_077a722f.png"}, "view": "region_year", "metric": "r2", "value": 0.018, "value_std": 0.117}, {"model": "informer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_5035835b.png", "temporal": "assets/maize_ML_temporal_077a722f.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1208, "value_std": 0.0073}, {"model": "informer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_5035835b.png", "temporal": "assets/maize_ML_temporal_077a722f.png"}, "view": "spatial", "metric": "r", "value": 0.4949, "value_std": 0.0645}, {"model": "informer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_5035835b.png", "temporal": "assets/maize_ML_temporal_077a722f.png"}, "view": "spatial", "metric": "r_agg", "value": 0.8002, "value_std": 0.0291}, {"model": "informer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_5035835b.png", "temporal": "assets/maize_ML_temporal_077a722f.png"}, "view": "temporal", "metric": "r", "value": 0.1539, "value_std": 0.1354}, {"model": "informer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_5035835b.png", "temporal": "assets/maize_ML_temporal_077a722f.png"}, "view": "temporal", "metric": "r_agg", "value": 0.2787, "value_std": 0.2492}, {"model": "informer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_5035835b.png", "temporal": "assets/maize_ML_temporal_077a722f.png"}, "view": "anomaly", "metric": "r", "value": 0.1539, "value_std": 0.1354}, {"model": "informer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_5035835b.png", "temporal": "assets/maize_ML_temporal_077a722f.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.118, "value_std": 0.1302}, {"model": "lightgbm", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_03068420.png", "temporal": "assets/maize_ML_temporal_142edb1f.png"}, "view": "region_year", "metric": "r2", "value": -1.3352, "value_std": 0.115}, {"model": "lightgbm", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_03068420.png", "temporal": "assets/maize_ML_temporal_142edb1f.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1865, "value_std": 0.0045}, {"model": "lightgbm", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_03068420.png", "temporal": "assets/maize_ML_temporal_142edb1f.png"}, "view": "spatial", "metric": "r", "value": 0.5598, "value_std": 0.02}, {"model": "lightgbm", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_03068420.png", "temporal": "assets/maize_ML_temporal_142edb1f.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7982, "value_std": 0.0177}, {"model": "lightgbm", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_03068420.png", "temporal": "assets/maize_ML_temporal_142edb1f.png"}, "view": "temporal", "metric": "r", "value": 0.3286, "value_std": 0.057}, {"model": "lightgbm", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_03068420.png", "temporal": "assets/maize_ML_temporal_142edb1f.png"}, "view": "temporal", "metric": "r_agg", "value": 0.7106, "value_std": 0.0168}, {"model": "lightgbm", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_03068420.png", "temporal": "assets/maize_ML_temporal_142edb1f.png"}, "view": "anomaly", "metric": "r", "value": 0.3286, "value_std": 0.057}, {"model": "lightgbm", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_03068420.png", "temporal": "assets/maize_ML_temporal_142edb1f.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.1932, "value_std": 0.0243}, {"model": "lpjml_bc", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e05c4954.png", "temporal": "assets/maize_ML_temporal_51d326d5.png"}, "view": "region_year", "metric": "r2", "value": -2.7271, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e05c4954.png", "temporal": "assets/maize_ML_temporal_51d326d5.png"}, "view": "region_year", "metric": "nrmse", "value": 0.2357, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e05c4954.png", "temporal": "assets/maize_ML_temporal_51d326d5.png"}, "view": "spatial", "metric": "r", "value": 0.4972, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e05c4954.png", "temporal": "assets/maize_ML_temporal_51d326d5.png"}, "view": "spatial", "metric": "r_agg", "value": 0.8308, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e05c4954.png", "temporal": "assets/maize_ML_temporal_51d326d5.png"}, "view": "temporal", "metric": "r", "value": -0.235, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e05c4954.png", "temporal": "assets/maize_ML_temporal_51d326d5.png"}, "view": "temporal", "metric": "r_agg", "value": -0.4224, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e05c4954.png", "temporal": "assets/maize_ML_temporal_51d326d5.png"}, "view": "anomaly", "metric": "r", "value": -0.235, "value_std": 0.0}, {"model": "lpjml_bc", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e05c4954.png", "temporal": "assets/maize_ML_temporal_51d326d5.png"}, "view": "anomaly", "metric": "r_pooled", "value": -0.2652, "value_std": 0.0}, {"model": "lstm_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_0696e612.png", "temporal": "assets/maize_ML_temporal_019a1a9f.png"}, "view": "region_year", "metric": "r2", "value": 0.0711, "value_std": 0.0696}, {"model": "lstm_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_0696e612.png", "temporal": "assets/maize_ML_temporal_019a1a9f.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1176, "value_std": 0.0043}, {"model": "lstm_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_0696e612.png", "temporal": "assets/maize_ML_temporal_019a1a9f.png"}, "view": "spatial", "metric": "r", "value": 0.5198, "value_std": 0.0551}, {"model": "lstm_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_0696e612.png", "temporal": "assets/maize_ML_temporal_019a1a9f.png"}, "view": "spatial", "metric": "r_agg", "value": 0.72, "value_std": 0.0246}, {"model": "lstm_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_0696e612.png", "temporal": "assets/maize_ML_temporal_019a1a9f.png"}, "view": "temporal", "metric": "r", "value": 0.3261, "value_std": 0.1171}, {"model": "lstm_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_0696e612.png", "temporal": "assets/maize_ML_temporal_019a1a9f.png"}, "view": "temporal", "metric": "r_agg", "value": 0.3652, "value_std": 0.1821}, {"model": "lstm_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_0696e612.png", "temporal": "assets/maize_ML_temporal_019a1a9f.png"}, "view": "anomaly", "metric": "r", "value": 0.3261, "value_std": 0.1171}, {"model": "lstm_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_0696e612.png", "temporal": "assets/maize_ML_temporal_019a1a9f.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.1862, "value_std": 0.0716}, {"model": "nlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b81a4f60.png", "temporal": "assets/maize_ML_temporal_0896287e.png"}, "view": "region_year", "metric": "r2", "value": -0.2864, "value_std": 0.279}, {"model": "nlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b81a4f60.png", "temporal": "assets/maize_ML_temporal_0896287e.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1378, "value_std": 0.0152}, {"model": "nlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b81a4f60.png", "temporal": "assets/maize_ML_temporal_0896287e.png"}, "view": "spatial", "metric": "r", "value": 0.3929, "value_std": 0.0375}, {"model": "nlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b81a4f60.png", "temporal": "assets/maize_ML_temporal_0896287e.png"}, "view": "spatial", "metric": "r_agg", "value": 0.5975, "value_std": 0.0511}, {"model": "nlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b81a4f60.png", "temporal": "assets/maize_ML_temporal_0896287e.png"}, "view": "temporal", "metric": "r", "value": 0.4372, "value_std": 0.1276}, {"model": "nlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b81a4f60.png", "temporal": "assets/maize_ML_temporal_0896287e.png"}, "view": "temporal", "metric": "r_agg", "value": 0.787, "value_std": 0.1419}, {"model": "nlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b81a4f60.png", "temporal": "assets/maize_ML_temporal_0896287e.png"}, "view": "anomaly", "metric": "r", "value": 0.4372, "value_std": 0.1276}, {"model": "nlinear_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b81a4f60.png", "temporal": "assets/maize_ML_temporal_0896287e.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.2634, "value_std": 0.088}, {"model": "patchtst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e2848a40.png", "temporal": "assets/maize_ML_temporal_392e8b0b.png"}, "view": "region_year", "metric": "r2", "value": -0.0318, "value_std": 0.1114}, {"model": "patchtst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e2848a40.png", "temporal": "assets/maize_ML_temporal_392e8b0b.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1239, "value_std": 0.0067}, {"model": "patchtst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e2848a40.png", "temporal": "assets/maize_ML_temporal_392e8b0b.png"}, "view": "spatial", "metric": "r", "value": 0.2916, "value_std": 0.0722}, {"model": "patchtst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e2848a40.png", "temporal": "assets/maize_ML_temporal_392e8b0b.png"}, "view": "spatial", "metric": "r_agg", "value": 0.5907, "value_std": 0.0542}, {"model": "patchtst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e2848a40.png", "temporal": "assets/maize_ML_temporal_392e8b0b.png"}, "view": "temporal", "metric": "r", "value": 0.3381, "value_std": 0.0826}, {"model": "patchtst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e2848a40.png", "temporal": "assets/maize_ML_temporal_392e8b0b.png"}, "view": "temporal", "metric": "r_agg", "value": 0.7451, "value_std": 0.1053}, {"model": "patchtst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e2848a40.png", "temporal": "assets/maize_ML_temporal_392e8b0b.png"}, "view": "anomaly", "metric": "r", "value": 0.3381, "value_std": 0.0826}, {"model": "patchtst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_e2848a40.png", "temporal": "assets/maize_ML_temporal_392e8b0b.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.2198, "value_std": 0.063}, {"model": "random_forest", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_c55b40c3.png", "temporal": "assets/maize_ML_temporal_29e91482.png"}, "view": "region_year", "metric": "r2", "value": -0.8444, "value_std": 0.0107}, {"model": "random_forest", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_c55b40c3.png", "temporal": "assets/maize_ML_temporal_29e91482.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1658, "value_std": 0.0005}, {"model": "random_forest", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_c55b40c3.png", "temporal": "assets/maize_ML_temporal_29e91482.png"}, "view": "spatial", "metric": "r", "value": 0.606, "value_std": 0.0057}, {"model": "random_forest", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_c55b40c3.png", "temporal": "assets/maize_ML_temporal_29e91482.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7534, "value_std": 0.0056}, {"model": "random_forest", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_c55b40c3.png", "temporal": "assets/maize_ML_temporal_29e91482.png"}, "view": "temporal", "metric": "r", "value": 0.4461, "value_std": 0.0373}, {"model": "random_forest", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_c55b40c3.png", "temporal": "assets/maize_ML_temporal_29e91482.png"}, "view": "temporal", "metric": "r_agg", "value": 0.7831, "value_std": 0.0232}, {"model": "random_forest", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_c55b40c3.png", "temporal": "assets/maize_ML_temporal_29e91482.png"}, "view": "anomaly", "metric": "r", "value": 0.4461, "value_std": 0.0373}, {"model": "random_forest", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_c55b40c3.png", "temporal": "assets/maize_ML_temporal_29e91482.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.234, "value_std": 0.01}, {"model": "ridge", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_97122a1d.png", "temporal": "assets/maize_ML_temporal_7ad2a0da.png"}, "view": "region_year", "metric": "r2", "value": -0.1711, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_97122a1d.png", "temporal": "assets/maize_ML_temporal_7ad2a0da.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1321, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_97122a1d.png", "temporal": "assets/maize_ML_temporal_7ad2a0da.png"}, "view": "spatial", "metric": "r", "value": 0.573, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_97122a1d.png", "temporal": "assets/maize_ML_temporal_7ad2a0da.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7503, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_97122a1d.png", "temporal": "assets/maize_ML_temporal_7ad2a0da.png"}, "view": "temporal", "metric": "r", "value": 0.6407, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_97122a1d.png", "temporal": "assets/maize_ML_temporal_7ad2a0da.png"}, "view": "temporal", "metric": "r_agg", "value": 0.9208, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_97122a1d.png", "temporal": "assets/maize_ML_temporal_7ad2a0da.png"}, "view": "anomaly", "metric": "r", "value": 0.6407, "value_std": 0.0}, {"model": "ridge", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_97122a1d.png", "temporal": "assets/maize_ML_temporal_7ad2a0da.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.4004, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_20a8fcaa.png", "temporal": "assets/maize_ML_temporal_1d585ced.png"}, "view": "region_year", "metric": "r2", "value": -0.6138, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_20a8fcaa.png", "temporal": "assets/maize_ML_temporal_1d585ced.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1551, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_20a8fcaa.png", "temporal": "assets/maize_ML_temporal_1d585ced.png"}, "view": "spatial", "metric": "r", "value": 0.6257, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_20a8fcaa.png", "temporal": "assets/maize_ML_temporal_1d585ced.png"}, "view": "spatial", "metric": "r_agg", "value": 0.8257, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_20a8fcaa.png", "temporal": "assets/maize_ML_temporal_1d585ced.png"}, "view": "temporal", "metric": "r", "value": 0.444, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_20a8fcaa.png", "temporal": "assets/maize_ML_temporal_1d585ced.png"}, "view": "temporal", "metric": "r_agg", "value": 0.65, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_20a8fcaa.png", "temporal": "assets/maize_ML_temporal_1d585ced.png"}, "view": "anomaly", "metric": "r", "value": 0.444, "value_std": 0.0}, {"model": "tabdpt", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_20a8fcaa.png", "temporal": "assets/maize_ML_temporal_1d585ced.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.3052, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b801d2b6.png", "temporal": "assets/maize_ML_temporal_0508c146.png"}, "view": "region_year", "metric": "r2", "value": -0.6298, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b801d2b6.png", "temporal": "assets/maize_ML_temporal_0508c146.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1558, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b801d2b6.png", "temporal": "assets/maize_ML_temporal_0508c146.png"}, "view": "spatial", "metric": "r", "value": 0.7075, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b801d2b6.png", "temporal": "assets/maize_ML_temporal_0508c146.png"}, "view": "spatial", "metric": "r_agg", "value": 0.8298, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b801d2b6.png", "temporal": "assets/maize_ML_temporal_0508c146.png"}, "view": "temporal", "metric": "r", "value": 0.5309, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b801d2b6.png", "temporal": "assets/maize_ML_temporal_0508c146.png"}, "view": "temporal", "metric": "r_agg", "value": 0.6165, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b801d2b6.png", "temporal": "assets/maize_ML_temporal_0508c146.png"}, "view": "anomaly", "metric": "r", "value": 0.5309, "value_std": 0.0}, {"model": "tabicl", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_b801d2b6.png", "temporal": "assets/maize_ML_temporal_0508c146.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.3043, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_7651028d.png", "temporal": "assets/maize_ML_temporal_ebb8179d.png"}, "view": "region_year", "metric": "r2", "value": -0.3053, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_7651028d.png", "temporal": "assets/maize_ML_temporal_ebb8179d.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1395, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_7651028d.png", "temporal": "assets/maize_ML_temporal_ebb8179d.png"}, "view": "spatial", "metric": "r", "value": 0.729, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_7651028d.png", "temporal": "assets/maize_ML_temporal_ebb8179d.png"}, "view": "spatial", "metric": "r_agg", "value": 0.8684, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_7651028d.png", "temporal": "assets/maize_ML_temporal_ebb8179d.png"}, "view": "temporal", "metric": "r", "value": 0.5819, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_7651028d.png", "temporal": "assets/maize_ML_temporal_ebb8179d.png"}, "view": "temporal", "metric": "r_agg", "value": 0.77, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_7651028d.png", "temporal": "assets/maize_ML_temporal_ebb8179d.png"}, "view": "anomaly", "metric": "r", "value": 0.5819, "value_std": 0.0}, {"model": "tabpfn", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_7651028d.png", "temporal": "assets/maize_ML_temporal_ebb8179d.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.4235, "value_std": 0.0}, {"model": "transformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_9197dee6.png", "temporal": "assets/maize_ML_temporal_6e67b695.png"}, "view": "region_year", "metric": "r2", "value": -0.1122, "value_std": 0.1059}, {"model": "transformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_9197dee6.png", "temporal": "assets/maize_ML_temporal_6e67b695.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1286, "value_std": 0.006}, {"model": "transformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_9197dee6.png", "temporal": "assets/maize_ML_temporal_6e67b695.png"}, "view": "spatial", "metric": "r", "value": 0.5649, "value_std": 0.0562}, {"model": "transformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_9197dee6.png", "temporal": "assets/maize_ML_temporal_6e67b695.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7862, "value_std": 0.0383}, {"model": "transformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_9197dee6.png", "temporal": "assets/maize_ML_temporal_6e67b695.png"}, "view": "temporal", "metric": "r", "value": 0.2206, "value_std": 0.2331}, {"model": "transformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_9197dee6.png", "temporal": "assets/maize_ML_temporal_6e67b695.png"}, "view": "temporal", "metric": "r_agg", "value": 0.3088, "value_std": 0.3811}, {"model": "transformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_9197dee6.png", "temporal": "assets/maize_ML_temporal_6e67b695.png"}, "view": "anomaly", "metric": "r", "value": 0.2206, "value_std": 0.2331}, {"model": "transformer_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_9197dee6.png", "temporal": "assets/maize_ML_temporal_6e67b695.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.133, "value_std": 0.1498}, {"model": "trend", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_3bbc8643.png", "temporal": "assets/maize_ML_temporal_0f3fee88.png"}, "view": "region_year", "metric": "r2", "value": -0.4568, "value_std": 0.0}, {"model": "trend", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_3bbc8643.png", "temporal": "assets/maize_ML_temporal_0f3fee88.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1473, "value_std": 0.0}, {"model": "trend", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_3bbc8643.png", "temporal": "assets/maize_ML_temporal_0f3fee88.png"}, "view": "spatial", "metric": "r", "value": 0.5201, "value_std": 0.0}, {"model": "trend", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_3bbc8643.png", "temporal": "assets/maize_ML_temporal_0f3fee88.png"}, "view": "spatial", "metric": "r_agg", "value": 0.8298, "value_std": 0.0}, {"model": "trend", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_3bbc8643.png", "temporal": "assets/maize_ML_temporal_0f3fee88.png"}, "view": "temporal", "metric": "r", "value": 0.063, "value_std": 0.0}, {"model": "trend", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_3bbc8643.png", "temporal": "assets/maize_ML_temporal_0f3fee88.png"}, "view": "temporal", "metric": "r_agg", "value": 0.2076, "value_std": 0.0}, {"model": "trend", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_3bbc8643.png", "temporal": "assets/maize_ML_temporal_0f3fee88.png"}, "view": "anomaly", "metric": "r", "value": 0.063, "value_std": 0.0}, {"model": "trend", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_3bbc8643.png", "temporal": "assets/maize_ML_temporal_0f3fee88.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.0476, "value_std": 0.0}, {"model": "tst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_73d05a27.png", "temporal": "assets/maize_ML_temporal_74709627.png"}, "view": "region_year", "metric": "r2", "value": 0.0901, "value_std": 0.092}, {"model": "tst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_73d05a27.png", "temporal": "assets/maize_ML_temporal_74709627.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1163, "value_std": 0.0058}, {"model": "tst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_73d05a27.png", "temporal": "assets/maize_ML_temporal_74709627.png"}, "view": "spatial", "metric": "r", "value": 0.4479, "value_std": 0.0521}, {"model": "tst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_73d05a27.png", "temporal": "assets/maize_ML_temporal_74709627.png"}, "view": "spatial", "metric": "r_agg", "value": 0.6337, "value_std": 0.0263}, {"model": "tst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_73d05a27.png", "temporal": "assets/maize_ML_temporal_74709627.png"}, "view": "temporal", "metric": "r", "value": 0.298, "value_std": 0.0464}, {"model": "tst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_73d05a27.png", "temporal": "assets/maize_ML_temporal_74709627.png"}, "view": "temporal", "metric": "r_agg", "value": 0.5796, "value_std": 0.0588}, {"model": "tst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_73d05a27.png", "temporal": "assets/maize_ML_temporal_74709627.png"}, "view": "anomaly", "metric": "r", "value": 0.298, "value_std": 0.0464}, {"model": "tst_lf", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_73d05a27.png", "temporal": "assets/maize_ML_temporal_74709627.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.2331, "value_std": 0.0548}, {"model": "xgboost", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_8bdb75af.png", "temporal": "assets/maize_ML_temporal_c16f1a9a.png"}, "view": "region_year", "metric": "r2", "value": -0.6887, "value_std": 0.0181}, {"model": "xgboost", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_8bdb75af.png", "temporal": "assets/maize_ML_temporal_c16f1a9a.png"}, "view": "region_year", "metric": "nrmse", "value": 0.1586, "value_std": 0.0009}, {"model": "xgboost", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_8bdb75af.png", "temporal": "assets/maize_ML_temporal_c16f1a9a.png"}, "view": "spatial", "metric": "r", "value": 0.6484, "value_std": 0.009}, {"model": "xgboost", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_8bdb75af.png", "temporal": "assets/maize_ML_temporal_c16f1a9a.png"}, "view": "spatial", "metric": "r_agg", "value": 0.7952, "value_std": 0.0024}, {"model": "xgboost", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_8bdb75af.png", "temporal": "assets/maize_ML_temporal_c16f1a9a.png"}, "view": "temporal", "metric": "r", "value": 0.3816, "value_std": 0.0306}, {"model": "xgboost", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_8bdb75af.png", "temporal": "assets/maize_ML_temporal_c16f1a9a.png"}, "view": "temporal", "metric": "r_agg", "value": 0.6701, "value_std": 0.0219}, {"model": "xgboost", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_8bdb75af.png", "temporal": "assets/maize_ML_temporal_c16f1a9a.png"}, "view": "anomaly", "metric": "r", "value": 0.3816, "value_std": 0.0306}, {"model": "xgboost", "dataset": "maize_ML", "n_regions": 24, "n_years": 5, "n_samples": 120, "images": {"scatter": "assets/maize_ML_scatter_8bdb75af.png", "temporal": "assets/maize_ML_temporal_c16f1a9a.png"}, "view": "anomaly", "metric": "r_pooled", "value": 0.2201, "value_std": 0.0119}];
+    const MAP_DATA = {"geojson_by_country": {"ML": "assets/regions_ML.geojson"}, "yield_ranges": {"wheat": {"min": 0, "max": 9}, "maize": {"min": 0, "max": 14}}, "datasets": {"maize_ML": {"country": "ML", "crop": "maize", "yield_range": {"min": 0, "max": 14}, "years": [2013, 2014, 2015, 2016, 2017], "actual": {"ML020201201": 2.2996, "ML020208307": 2.3268, "ML020220202": 2.0476, "ML020220205": 2.3058, "ML020220503": 2.539, "ML020424204": 2.0008, "ML020601206": 1.7718, "ML030120104": 2.4952, "ML030122101": 2.3132, "ML030122102": 2.4308, "ML030122103": 2.4152, "ML030122106": 2.3312, "ML030201505": 2.5832, "ML030406304": 2.414, "ML030412305": 2.3538, "ML030421403": 2.6108, "ML030422302": 2.3342, "ML030524301": 2.444, "ML030524501": 2.426, "ML030532303": 2.5138, "ML030532502": 2.6722, "ML030532504": 2.4246, "ML030707306": 2.0998, "ML040503401": 2.4516}, "actual_by_year": {"2013": {"ML020201201": 2.105, "ML020208307": 2.37, "ML020220202": 1.91, "ML020220205": 1.822, "ML020220503": 2.378, "ML020424204": 1.959, "ML020601206": 1.371, "ML030120104": 2.249, "ML030122101": 2.169, "ML030122102": 2.136, "ML030122103": 2.286, "ML030122106": 2.185, "ML030201505": 2.474, "ML030406304": 1.82, "ML030412305": 2.088, "ML030421403": 2.251, "ML030422302": 1.839, "ML030524301": 2.341, "ML030524501": 2.123, "ML030532303": 2.382, "ML030532502": 2.174, "ML030532504": 2.407, "ML030707306": 1.784, "ML040503401": 2.329}, "2014": {"ML020201201": 2.298, "ML020208307": 2.541, "ML020220202": 2.097, "ML020220205": 2.286, "ML020220503": 2.536, "ML020424204": 1.98, "ML020601206": 1.513, "ML030120104": 2.791, "ML030122101": 2.28, "ML030122102": 2.494, "ML030122103": 2.489, "ML030122106": 2.492, "ML030201505": 2.642, "ML030406304": 2.701, "ML030412305": 2.553, "ML030421403": 2.844, "ML030422302": 2.409, "ML030524301": 2.763, "ML030524501": 2.585, "ML030532303": 2.454, "ML030532502": 2.933, "ML030532504": 2.495, "ML030707306": 2.243, "ML040503401": 2.531}, "2015": {"ML020201201": 2.415, "ML020208307": 2.425, "ML020220202": 1.963, "ML020220205": 2.396, "ML020220503": 2.734, "ML020424204": 2.035, "ML020601206": 1.851, "ML030120104": 2.784, "ML030122101": 2.32, "ML030122102": 2.523, "ML030122103": 2.421, "ML030122106": 2.367, "ML030201505": 2.75, "ML030406304": 2.784, "ML030412305": 2.441, "ML030421403": 2.925, "ML030422302": 2.722, "ML030524301": 2.378, "ML030524501": 2.604, "ML030532303": 2.735, "ML030532502": 2.952, "ML030532504": 2.515, "ML030707306": 2.131, "ML040503401": 2.624}, "2016": {"ML020201201": 2.266, "ML020208307": 2.218, "ML020220202": 2.028, "ML020220205": 2.359, "ML020220503": 2.74, "ML020424204": 1.902, "ML020601206": 1.942, "ML030120104": 2.432, "ML030122101": 2.45, "ML030122102": 2.585, "ML030122103": 2.572, "ML030122106": 2.295, "ML030201505": 2.755, "ML030406304": 2.461, "ML030412305": 2.207, "ML030421403": 2.685, "ML030422302": 2.45, "ML030524301": 2.336, "ML030524501": 2.674, "ML030532303": 2.297, "ML030532502": 2.958, "ML030532504": 2.675, "ML030707306": 2.147, "ML040503401": 2.388}, "2017": {"ML020201201": 2.414, "ML020208307": 2.08, "ML020220202": 2.24, "ML020220205": 2.666, "ML020220503": 2.307, "ML020424204": 2.128, "ML020601206": 2.182, "ML030120104": 2.22, "ML030122101": 2.347, "ML030122102": 2.416, "ML030122103": 2.308, "ML030122106": 2.317, "ML030201505": 2.295, "ML030406304": 2.304, "ML030412305": 2.48, "ML030421403": 2.349, "ML030422302": 2.251, "ML030524301": 2.402, "ML030524501": 2.144, "ML030532303": 2.701, "ML030532502": 2.344, "ML030532504": 2.031, "ML030707306": 2.194, "ML040503401": 2.386}}, "models": {"autoformer_lf": {"ML020201201": 2.43, "ML020208307": 2.4244, "ML020220202": 2.215, "ML020220205": 2.347, "ML020220503": 2.27, "ML020424204": 2.4306, "ML020601206": 2.2778, "ML030120104": 2.33, "ML030122101": 2.4076, "ML030122102": 2.3702, "ML030122103": 2.37, "ML030122106": 2.218, "ML030201505": 2.5288, "ML030406304": 2.441, "ML030412305": 2.3932, "ML030421403": 2.3524, "ML030422302": 2.4314, "ML030524301": 2.435, "ML030524501": 2.3046, "ML030532303": 2.499, "ML030532502": 2.6508, "ML030532504": 2.605, "ML030707306": 2.273, "ML040503401": 2.43}, "average_yield": {"ML020201201": 1.9564, "ML020208307": 1.8112, "ML020220202": 1.7302, "ML020220205": 1.7278, "ML020220503": 2.0672, "ML020424204": 1.43, "ML020601206": 1.4898, "ML030120104": 1.9678, "ML030122101": 2.0198, "ML030122102": 2.086, "ML030122103": 2.1472, "ML030122106": 2.0254, "ML030201505": 2.2404, "ML030406304": 2.1766, "ML030412305": 1.8944, "ML030421403": 1.8176, "ML030422302": 1.8508, "ML030524301": 2.0498, "ML030524501": 2.1256, "ML030532303": 2.0926, "ML030532502": 2.44, "ML030532504": 2.4312, "ML030707306": 1.687, "ML040503401": 1.785}, "cnn_lf": {"ML020201201": 2.3326, "ML020208307": 2.3236, "ML020220202": 2.2238, "ML020220205": 2.3248, "ML020220503": 2.3076, "ML020424204": 2.2752, "ML020601206": 2.1882, "ML030120104": 2.2828, "ML030122101": 2.3098, "ML030122102": 2.3182, "ML030122103": 2.3512, "ML030122106": 2.2304, "ML030201505": 2.4216, "ML030406304": 2.3468, "ML030412305": 2.299, "ML030421403": 2.2968, "ML030422302": 2.3102, "ML030524301": 2.3324, "ML030524501": 2.3196, "ML030532303": 2.3804, "ML030532502": 2.5664, "ML030532504": 2.5918, "ML030707306": 2.1254, "ML040503401": 2.338}, "dlinear_lf": {"ML020201201": 2.321, "ML020208307": 2.1064, "ML020220202": 2.2368, "ML020220205": 2.3888, "ML020220503": 2.2422, "ML020424204": 2.276, "ML020601206": 2.031, "ML030120104": 2.3418, "ML030122101": 2.3828, "ML030122102": 2.3838, "ML030122103": 2.3874, "ML030122106": 2.0858, "ML030201505": 2.2784, "ML030406304": 2.303, "ML030412305": 2.1402, "ML030421403": 2.1288, "ML030422302": 2.2928, "ML030524301": 2.3304, "ML030524501": 2.3132, "ML030532303": 2.2876, "ML030532502": 2.4854, "ML030532504": 2.4908, "ML030707306": 2.0956, "ML040503401": 2.3014}, "informer_lf": {"ML020201201": 2.4196, "ML020208307": 2.313, "ML020220202": 2.2354, "ML020220205": 2.3526, "ML020220503": 2.291, "ML020424204": 2.2146, "ML020601206": 2.0046, "ML030120104": 2.326, "ML030122101": 2.3956, "ML030122102": 2.4158, "ML030122103": 2.3744, "ML030122106": 2.1988, "ML030201505": 2.5158, "ML030406304": 2.4252, "ML030412305": 2.335, "ML030421403": 2.385, "ML030422302": 2.472, "ML030524301": 2.4634, "ML030524501": 2.427, "ML030532303": 2.4518, "ML030532502": 2.642, "ML030532504": 2.595, "ML030707306": 2.1034, "ML040503401": 2.3804}, "lightgbm": {"ML020201201": 1.933, "ML020208307": 1.7266, "ML020220202": 1.766, "ML020220205": 1.9096, "ML020220503": 2.1406, "ML020424204": 1.4208, "ML020601206": 1.3678, "ML030120104": 2.0872, "ML030122101": 2.1176, "ML030122102": 2.1786, "ML030122103": 2.2652, "ML030122106": 2.087, "ML030201505": 2.3244, "ML030406304": 2.1006, "ML030412305": 2.126, "ML030421403": 1.8518, "ML030422302": 1.8646, "ML030524301": 2.0628, "ML030524501": 2.1162, "ML030532303": 2.0478, "ML030532502": 2.3412, "ML030532504": 2.3382, "ML030707306": 1.9068, "ML040503401": 1.849}, "lpjml_bc": {"ML020201201": 1.921, "ML020208307": 1.8236, "ML020220202": 1.6836, "ML020220205": 1.7944, "ML020220503": 2.1636, "ML020424204": 1.3396, "ML020601206": 1.4306, "ML030120104": 1.9614, "ML030122101": 2.0056, "ML030122102": 2.1836, "ML030122103": 2.1972, "ML030122106": 2.045, "ML030201505": 2.4042, "ML030406304": 2.3752, "ML030412305": 2.1244, "ML030421403": 2.0396, "ML030422302": 1.9636, "ML030524301": 2.1262, "ML030524501": 2.1754, "ML030532303": 2.2576, "ML030532502": 2.5336, "ML030532504": 2.4862, "ML030707306": 1.8474, "ML040503401": 1.9558}, "lstm_lf": {"ML020201201": 2.4466, "ML020208307": 2.379, "ML020220202": 2.334, "ML020220205": 2.4162, "ML020220503": 2.3334, "ML020424204": 2.232, "ML020601206": 1.9596, "ML030120104": 2.345, "ML030122101": 2.3446, "ML030122102": 2.3686, "ML030122103": 2.416, "ML030122106": 2.2082, "ML030201505": 2.5138, "ML030406304": 2.4788, "ML030412305": 2.3394, "ML030421403": 2.3346, "ML030422302": 2.4554, "ML030524301": 2.4608, "ML030524501": 2.4228, "ML030532303": 2.4992, "ML030532502": 2.7146, "ML030532504": 2.671, "ML030707306": 2.2312, "ML040503401": 2.4422}, "nlinear_lf": {"ML020201201": 2.175, "ML020208307": 2.1244, "ML020220202": 2.1212, "ML020220205": 2.24, "ML020220503": 2.1768, "ML020424204": 2.0966, "ML020601206": 2.0238, "ML030120104": 2.24, "ML030122101": 2.2396, "ML030122102": 2.2734, "ML030122103": 2.277, "ML030122106": 2.0662, "ML030201505": 2.3482, "ML030406304": 2.2386, "ML030412305": 2.2604, "ML030421403": 2.1436, "ML030422302": 2.1878, "ML030524301": 2.2202, "ML030524501": 2.3028, "ML030532303": 2.2568, "ML030532502": 2.4566, "ML030532504": 2.5662, "ML030707306": 1.9782, "ML040503401": 2.2286}, "patchtst_lf": {"ML020201201": 2.2402, "ML020208307": 2.2286, "ML020220202": 2.1318, "ML020220205": 2.2916, "ML020220503": 2.1918, "ML020424204": 2.237, "ML020601206": 2.1688, "ML030120104": 2.2764, "ML030122101": 2.3292, "ML030122102": 2.3152, "ML030122103": 2.2796, "ML030122106": 2.2014, "ML030201505": 2.3952, "ML030406304": 2.3134, "ML030412305": 2.2048, "ML030421403": 2.1942, "ML030422302": 2.2472, "ML030524301": 2.2472, "ML030524501": 2.3124, "ML030532303": 2.3384, "ML030532502": 2.4794, "ML030532504": 2.6064, "ML030707306": 2.1038, "ML040503401": 2.2516}, "random_forest": {"ML020201201": 2.017, "ML020208307": 1.8642, "ML020220202": 1.9724, "ML020220205": 1.9848, "ML020220503": 2.1478, "ML020424204": 1.6444, "ML020601206": 1.6514, "ML030120104": 2.0988, "ML030122101": 2.0966, "ML030122102": 2.1182, "ML030122103": 2.1806, "ML030122106": 2.091, "ML030201505": 2.2728, "ML030406304": 2.096, "ML030412305": 2.1334, "ML030421403": 1.9076, "ML030422302": 1.9788, "ML030524301": 2.0946, "ML030524501": 2.1446, "ML030532303": 2.0818, "ML030532502": 2.3148, "ML030532504": 2.3118, "ML030707306": 1.9114, "ML040503401": 1.9376}, "ridge": {"ML020201201": 2.1296, "ML020208307": 1.9922, "ML020220202": 1.9758, "ML020220205": 2.0952, "ML020220503": 2.1824, "ML020424204": 1.7424, "ML020601206": 1.8006, "ML030120104": 2.1222, "ML030122101": 2.1254, "ML030122102": 2.1628, "ML030122103": 2.2586, "ML030122106": 2.1736, "ML030201505": 2.2928, "ML030406304": 2.2642, "ML030412305": 2.2806, "ML030421403": 2.0252, "ML030422302": 2.1326, "ML030524301": 2.1528, "ML030524501": 2.2694, "ML030532303": 2.2012, "ML030532502": 2.509, "ML030532504": 2.4906, "ML030707306": 1.932, "ML040503401": 2.114}, "tabdpt": {"ML020201201": 2.0696, "ML020208307": 1.9494, "ML020220202": 1.9704, "ML020220205": 2.0088, "ML020220503": 2.1968, "ML020424204": 1.6264, "ML020601206": 1.6638, "ML030120104": 2.0764, "ML030122101": 2.064, "ML030122102": 2.152, "ML030122103": 2.213, "ML030122106": 2.122, "ML030201505": 2.2162, "ML030406304": 2.1702, "ML030412305": 2.153, "ML030421403": 1.9994, "ML030422302": 2.0684, "ML030524301": 2.1416, "ML030524501": 2.138, "ML030532303": 2.1254, "ML030532502": 2.353, "ML030532504": 2.2846, "ML030707306": 1.9288, "ML040503401": 2.061}, "tabicl": {"ML020201201": 2.142, "ML020208307": 1.9198, "ML020220202": 1.8882, "ML020220205": 1.9094, "ML020220503": 2.1554, "ML020424204": 1.6022, "ML020601206": 1.572, "ML030120104": 2.1258, "ML030122101": 2.0654, "ML030122102": 2.1894, "ML030122103": 2.2264, "ML030122106": 2.099, "ML030201505": 2.2416, "ML030406304": 2.2974, "ML030412305": 2.078, "ML030421403": 2.0186, "ML030422302": 2.011, "ML030524301": 2.1616, "ML030524501": 2.1454, "ML030532303": 2.1482, "ML030532502": 2.441, "ML030532504": 2.386, "ML030707306": 1.889, "ML040503401": 2.0332}, "tabpfn": {"ML020201201": 2.1658, "ML020208307": 2.0342, "ML020220202": 1.9376, "ML020220205": 1.9772, "ML020220503": 2.201, "ML020424204": 1.573, "ML020601206": 1.5592, "ML030120104": 2.131, "ML030122101": 2.0444, "ML030122102": 2.2234, "ML030122103": 2.2362, "ML030122106": 2.1168, "ML030201505": 2.2886, "ML030406304": 2.3634, "ML030412305": 2.0988, "ML030421403": 2.1096, "ML030422302": 2.1168, "ML030524301": 2.2694, "ML030524501": 2.219, "ML030532303": 2.2254, "ML030532502": 2.4364, "ML030532504": 2.4224, "ML030707306": 1.8614, "ML040503401": 2.2132}, "transformer_lf": {"ML020201201": 2.1832, "ML020208307": 2.1576, "ML020220202": 2.035, "ML020220205": 2.1986, "ML020220503": 2.2134, "ML020424204": 1.9506, "ML020601206": 1.7872, "ML030120104": 2.1622, "ML030122101": 2.2404, "ML030122102": 2.2012, "ML030122103": 2.3018, "ML030122106": 2.1444, "ML030201505": 2.3434, "ML030406304": 2.2874, "ML030412305": 2.233, "ML030421403": 2.203, "ML030422302": 2.2732, "ML030524301": 2.2728, "ML030524501": 2.298, "ML030532303": 2.2974, "ML030532502": 2.5362, "ML030532504": 2.5096, "ML030707306": 1.862, "ML040503401": 2.1688}, "trend": {"ML020201201": 2.335, "ML020208307": 2.6272, "ML020220202": 2.0374, "ML020220205": 1.8524, "ML020220503": 2.4416, "ML020424204": 1.8434, "ML020601206": 1.5784, "ML030120104": 2.51, "ML030122101": 2.2196, "ML030122102": 2.3376, "ML030122103": 2.4378, "ML030122106": 2.1088, "ML030201505": 2.8326, "ML030406304": 2.1766, "ML030412305": 2.3232, "ML030421403": 2.7734, "ML030422302": 2.1668, "ML030524301": 2.3778, "ML030524501": 2.2882, "ML030532303": 2.3048, "ML030532502": 2.5562, "ML030532504": 2.4312, "ML030707306": 2.1524, "ML040503401": 2.6126}, "tst_lf": {"ML020201201": 2.2884, "ML020208307": 2.1896, "ML020220202": 2.047, "ML020220205": 2.3292, "ML020220503": 2.2208, "ML020424204": 2.1962, "ML020601206": 1.9996, "ML030120104": 2.2372, "ML030122101": 2.3232, "ML030122102": 2.3098, "ML030122103": 2.2982, "ML030122106": 2.128, "ML030201505": 2.5114, "ML030406304": 2.2938, "ML030412305": 2.2692, "ML030421403": 2.1444, "ML030422302": 2.298, "ML030524301": 2.3202, "ML030524501": 2.3088, "ML030532303": 2.4234, "ML030532502": 2.5456, "ML030532504": 2.5236, "ML030707306": 2.0864, "ML040503401": 2.1798}, "twso_bc": {"ML030406304": 2.1662, "ML030422302": 1.8926, "ML030524301": 2.1742, "ML030532504": 2.3086, "ML040503401": 1.6706}, "xgboost": {"ML020201201": 2.0232, "ML020208307": 1.9196, "ML020220202": 1.9686, "ML020220205": 2.0598, "ML020220503": 2.1558, "ML020424204": 1.7138, "ML020601206": 1.6968, "ML030120104": 2.093, "ML030122101": 2.09, "ML030122102": 2.105, "ML030122103": 2.192, "ML030122106": 2.0944, "ML030201505": 2.2642, "ML030406304": 2.1432, "ML030412305": 2.1294, "ML030421403": 1.9878, "ML030422302": 2.047, "ML030524301": 2.1068, "ML030524501": 2.1226, "ML030532303": 2.0772, "ML030532502": 2.271, "ML030532504": 2.2794, "ML030707306": 1.996, "ML040503401": 2.037}}, "models_by_year": {"autoformer_lf": {"2013": {"ML020201201": 2.233, "ML020208307": 2.227, "ML020220202": 2.036, "ML020220205": 2.119, "ML020220503": 2.018, "ML020424204": 2.235, "ML020601206": 2.059, "ML030120104": 2.079, "ML030122101": 2.166, "ML030122102": 2.112, "ML030122103": 2.158, "ML030122106": 1.995, "ML030201505": 2.286, "ML030406304": 2.242, "ML030412305": 2.232, "ML030421403": 2.141, "ML030422302": 2.234, "ML030524301": 2.237, "ML030524501": 2.082, "ML030532303": 2.317, "ML030532502": 2.479, "ML030532504": 2.508, "ML030707306": 2.105, "ML040503401": 2.231}, "2014": {"ML020201201": 2.316, "ML020208307": 2.312, "ML020220202": 2.168, "ML020220205": 2.224, "ML020220503": 2.159, "ML020424204": 2.317, "ML020601206": 2.188, "ML030120104": 2.234, "ML030122101": 2.324, "ML030122102": 2.269, "ML030122103": 2.269, "ML030122106": 2.122, "ML030201505": 2.408, "ML030406304": 2.325, "ML030412305": 2.307, "ML030421403": 2.254, "ML030422302": 2.317, "ML030524301": 2.32, "ML030524501": 2.205, "ML030532303": 2.393, "ML030532502": 2.5, "ML030532504": 2.53, "ML030707306": 2.195, "ML040503401": 2.316}, "2015": {"ML020201201": 2.427, "ML020208307": 2.42, "ML020220202": 2.188, "ML020220205": 2.354, "ML020220503": 2.282, "ML020424204": 2.428, "ML020601206": 2.263, "ML030120104": 2.315, "ML030122101": 2.405, "ML030122102": 2.36, "ML030122103": 2.403, "ML030122106": 2.242, "ML030201505": 2.524, "ML030406304": 2.438, "ML030412305": 2.372, "ML030421403": 2.341, "ML030422302": 2.428, "ML030524301": 2.432, "ML030524501": 2.293, "ML030532303": 2.483, "ML030532502": 2.65, "ML030532504": 2.617, "ML030707306": 2.26, "ML040503401": 2.426}, "2016": {"ML020201201": 2.528, "ML020208307": 2.522, "ML020220202": 2.243, "ML020220205": 2.435, "ML020220503": 2.337, "ML020424204": 2.528, "ML020601206": 2.335, "ML030120104": 2.413, "ML030122101": 2.486, "ML030122102": 2.461, "ML030122103": 2.419, "ML030122106": 2.284, "ML030201505": 2.646, "ML030406304": 2.542, "ML030412305": 2.469, "ML030421403": 2.425, "ML030422302": 2.53, "ML030524301": 2.534, "ML030524501": 2.369, "ML030532303": 2.592, "ML030532502": 2.739, "ML030532504": 2.598, "ML030707306": 2.307, "ML040503401": 2.529}, "2017": {"ML020201201": 2.646, "ML020208307": 2.641, "ML020220202": 2.44, "ML020220205": 2.603, "ML020220503": 2.554, "ML020424204": 2.645, "ML020601206": 2.544, "ML030120104": 2.609, "ML030122101": 2.657, "ML030122102": 2.649, "ML030122103": 2.601, "ML030122106": 2.447, "ML030201505": 2.78, "ML030406304": 2.658, "ML030412305": 2.586, "ML030421403": 2.601, "ML030422302": 2.648, "ML030524301": 2.652, "ML030524501": 2.574, "ML030532303": 2.71, "ML030532502": 2.886, "ML030532504": 2.772, "ML030707306": 2.498, "ML040503401": 2.648}}, "average_yield": {"2013": {"ML020201201": 1.916, "ML020208307": 1.724, "ML020220202": 1.693, "ML020220205": 1.667, "ML020220503": 1.99, "ML020424204": 1.352, "ML020601206": 1.48, "ML030120104": 1.887, "ML030122101": 1.986, "ML030122102": 2.047, "ML030122103": 2.111, "ML030122106": 1.983, "ML030201505": 2.18, "ML030406304": 2.154, "ML030412305": 1.835, "ML030421403": 1.705, "ML030422302": 1.795, "ML030524301": 1.989, "ML030524501": 2.079, "ML030532303": 2.039, "ML030532502": 2.409, "ML030532504": 2.423, "ML030707306": 1.639, "ML040503401": 1.689}, "2014": {"ML020201201": 1.929, "ML020208307": 1.77, "ML020220202": 1.709, "ML020220205": 1.679, "ML020220503": 2.022, "ML020424204": 1.395, "ML020601206": 1.472, "ML030120104": 1.913, "ML030122101": 1.999, "ML030122102": 2.053, "ML030122103": 2.123, "ML030122106": 1.997, "ML030201505": 2.204, "ML030406304": 2.131, "ML030412305": 1.853, "ML030421403": 1.744, "ML030422302": 1.799, "ML030524301": 2.014, "ML030524501": 2.082, "ML030532303": 2.064, "ML030532502": 2.39, "ML030532504": 2.422, "ML030707306": 1.649, "ML040503401": 1.735}, "2015": {"ML020201201": 1.954, "ML020208307": 1.822, "ML020220202": 1.735, "ML020220205": 1.722, "ML020220503": 2.062, "ML020424204": 1.434, "ML020601206": 1.475, "ML030120104": 1.971, "ML030122101": 2.017, "ML030122102": 2.082, "ML030122103": 2.148, "ML030122106": 2.03, "ML030201505": 2.238, "ML030406304": 2.169, "ML030412305": 1.9, "ML030421403": 1.818, "ML030422302": 1.839, "ML030524301": 2.064, "ML030524501": 2.121, "ML030532303": 2.09, "ML030532502": 2.431, "ML030532504": 2.427, "ML030707306": 1.689, "ML040503401": 1.788}, "2016": {"ML020201201": 1.983, "ML020208307": 1.859, "ML020220202": 1.749, "ML020220205": 1.767, "ML020220503": 2.11, "ML020424204": 1.472, "ML020601206": 1.498, "ML030120104": 2.022, "ML030122101": 2.036, "ML030122102": 2.11, "ML030122103": 2.165, "ML030122106": 2.051, "ML030201505": 2.274, "ML030406304": 2.207, "ML030412305": 1.934, "ML030421403": 1.887, "ML030422302": 1.894, "ML030524301": 2.084, "ML030524501": 2.156, "ML030532303": 2.13, "ML030532502": 2.469, "ML030532504": 2.434, "ML030707306": 1.716, "ML040503401": 1.84}, "2017": {"ML020201201": 2.0, "ML020208307": 1.881, "ML020220202": 1.765, "ML020220205": 1.804, "ML020220503": 2.152, "ML020424204": 1.497, "ML020601206": 1.524, "ML030120104": 2.046, "ML030122101": 2.061, "ML030122102": 2.138, "ML030122103": 2.189, "ML030122106": 2.066, "ML030201505": 2.306, "ML030406304": 2.222, "ML030412305": 1.95, "ML030421403": 1.934, "ML030422302": 1.927, "ML030524301": 2.098, "ML030524501": 2.19, "ML030532303": 2.14, "ML030532502": 2.501, "ML030532504": 2.45, "ML030707306": 1.742, "ML040503401": 1.873}}, "cnn_lf": {"2013": {"ML020201201": 2.222, "ML020208307": 2.169, "ML020220202": 2.158, "ML020220205": 2.24, "ML020220503": 2.053, "ML020424204": 2.159, "ML020601206": 2.021, "ML030120104": 2.231, "ML030122101": 2.238, "ML030122102": 2.244, "ML030122103": 2.208, "ML030122106": 2.122, "ML030201505": 2.199, "ML030406304": 2.222, "ML030412305": 2.338, "ML030421403": 2.146, "ML030422302": 2.206, "ML030524301": 2.235, "ML030524501": 2.313, "ML030532303": 2.404, "ML030532502": 2.53, "ML030532504": 2.602, "ML030707306": 2.04, "ML040503401": 2.158}, "2014": {"ML020201201": 2.126, "ML020208307": 2.125, "ML020220202": 1.999, "ML020220205": 2.164, "ML020220503": 2.265, "ML020424204": 2.064, "ML020601206": 2.031, "ML030120104": 2.084, "ML030122101": 2.198, "ML030122102": 2.16, "ML030122103": 2.211, "ML030122106": 2.149, "ML030201505": 2.255, "ML030406304": 2.104, "ML030412305": 2.108, "ML030421403": 2.091, "ML030422302": 2.087, "ML030524301": 2.117, "ML030524501": 2.172, "ML030532303": 2.161, "ML030532502": 2.451, "ML030532504": 2.502, "ML030707306": 1.914, "ML040503401": 2.13}, "2015": {"ML020201201": 2.414, "ML020208307": 2.42, "ML020220202": 2.278, "ML020220205": 2.396, "ML020220503": 2.266, "ML020424204": 2.396, "ML020601206": 2.281, "ML030120104": 2.319, "ML030122101": 2.323, "ML030122102": 2.353, "ML030122103": 2.328, "ML030122106": 2.166, "ML030201505": 2.532, "ML030406304": 2.511, "ML030412305": 2.38, "ML030421403": 2.374, "ML030422302": 2.459, "ML030524301": 2.427, "ML030524501": 2.43, "ML030532303": 2.486, "ML030532502": 2.537, "ML030532504": 2.562, "ML030707306": 2.356, "ML040503401": 2.514}, "2016": {"ML020201201": 2.68, "ML020208307": 2.649, "ML020220202": 2.686, "ML020220205": 2.717, "ML020220503": 2.914, "ML020424204": 2.631, "ML020601206": 2.502, "ML030120104": 2.723, "ML030122101": 2.633, "ML030122102": 2.718, "ML030122103": 2.718, "ML030122106": 2.563, "ML030201505": 2.914, "ML030406304": 2.773, "ML030412305": 2.634, "ML030421403": 2.653, "ML030422302": 2.617, "ML030524301": 2.684, "ML030524501": 2.783, "ML030532303": 2.798, "ML030532502": 3.119, "ML030532504": 3.039, "ML030707306": 2.421, "ML040503401": 2.671}, "2017": {"ML020201201": 2.221, "ML020208307": 2.255, "ML020220202": 1.998, "ML020220205": 2.107, "ML020220503": 2.04, "ML020424204": 2.126, "ML020601206": 2.106, "ML030120104": 2.057, "ML030122101": 2.157, "ML030122102": 2.116, "ML030122103": 2.291, "ML030122106": 2.152, "ML030201505": 2.208, "ML030406304": 2.124, "ML030412305": 2.035, "ML030421403": 2.22, "ML030422302": 2.182, "ML030524301": 2.199, "ML030524501": 1.9, "ML030532303": 2.053, "ML030532502": 2.195, "ML030532504": 2.254, "ML030707306": 1.896, "ML040503401": 2.217}}, "dlinear_lf": {"2013": {"ML020201201": 2.355, "ML020208307": 2.224, "ML020220202": 2.202, "ML020220205": 2.421, "ML020220503": 2.103, "ML020424204": 2.333, "ML020601206": 2.188, "ML030120104": 2.334, "ML030122101": 2.317, "ML030122102": 2.42, "ML030122103": 2.321, "ML030122106": 1.773, "ML030201505": 2.494, "ML030406304": 2.327, "ML030412305": 2.366, "ML030421403": 2.13, "ML030422302": 2.357, "ML030524301": 2.36, "ML030524501": 2.262, "ML030532303": 2.247, "ML030532502": 2.379, "ML030532504": 2.263, "ML030707306": 2.13, "ML040503401": 2.333}, "2014": {"ML020201201": 2.163, "ML020208307": 2.102, "ML020220202": 2.083, "ML020220205": 2.27, "ML020220503": 2.141, "ML020424204": 2.134, "ML020601206": 1.966, "ML030120104": 2.238, "ML030122101": 2.274, "ML030122102": 2.218, "ML030122103": 2.27, "ML030122106": 2.076, "ML030201505": 2.198, "ML030406304": 2.042, "ML030412305": 1.965, "ML030421403": 2.039, "ML030422302": 2.104, "ML030524301": 2.165, "ML030524501": 2.191, "ML030532303": 2.124, "ML030532502": 2.357, "ML030532504": 2.525, "ML030707306": 1.802, "ML040503401": 2.007}, "2015": {"ML020201201": 2.345, "ML020208307": 2.165, "ML020220202": 2.327, "ML020220205": 2.41, "ML020220503": 2.297, "ML020424204": 2.34, "ML020601206": 2.131, "ML030120104": 2.453, "ML030122101": 2.444, "ML030122102": 2.389, "ML030122103": 2.485, "ML030122106": 2.262, "ML030201505": 2.374, "ML030406304": 2.22, "ML030412305": 2.095, "ML030421403": 2.13, "ML030422302": 2.271, "ML030524301": 2.312, "ML030524501": 2.209, "ML030532303": 2.238, "ML030532502": 2.479, "ML030532504": 2.674, "ML030707306": 2.115, "ML040503401": 2.343}, "2016": {"ML020201201": 2.568, "ML020208307": 1.928, "ML020220202": 2.422, "ML020220205": 2.578, "ML020220503": 2.473, "ML020424204": 2.464, "ML020601206": 1.852, "ML030120104": 2.387, "ML030122101": 2.568, "ML030122102": 2.587, "ML030122103": 2.53, "ML030122106": 2.081, "ML030201505": 2.018, "ML030406304": 2.73, "ML030412305": 2.093, "ML030421403": 2.228, "ML030422302": 2.575, "ML030524301": 2.589, "ML030524501": 2.648, "ML030532303": 2.637, "ML030532502": 2.803, "ML030532504": 2.499, "ML030707306": 2.395, "ML040503401": 2.634}, "2017": {"ML020201201": 2.174, "ML020208307": 2.113, "ML020220202": 2.15, "ML020220205": 2.265, "ML020220503": 2.197, "ML020424204": 2.109, "ML020601206": 2.018, "ML030120104": 2.297, "ML030122101": 2.311, "ML030122102": 2.305, "ML030122103": 2.331, "ML030122106": 2.237, "ML030201505": 2.308, "ML030406304": 2.196, "ML030412305": 2.182, "ML030421403": 2.117, "ML030422302": 2.157, "ML030524301": 2.226, "ML030524501": 2.256, "ML030532303": 2.192, "ML030532502": 2.409, "ML030532504": 2.493, "ML030707306": 2.036, "ML040503401": 2.19}}, "informer_lf": {"2013": {"ML020201201": 2.222, "ML020208307": 2.151, "ML020220202": 2.012, "ML020220205": 1.973, "ML020220503": 1.943, "ML020424204": 1.947, "ML020601206": 1.947, "ML030120104": 1.971, "ML030122101": 2.24, "ML030122102": 2.134, "ML030122103": 2.258, "ML030122106": 1.948, "ML030201505": 2.286, "ML030406304": 2.139, "ML030412305": 2.058, "ML030421403": 2.311, "ML030422302": 2.442, "ML030524301": 2.333, "ML030524501": 2.019, "ML030532303": 2.052, "ML030532502": 2.457, "ML030532504": 2.499, "ML030707306": 1.793, "ML040503401": 2.461}, "2014": {"ML020201201": 2.362, "ML020208307": 2.267, "ML020220202": 2.23, "ML020220205": 2.276, "ML020220503": 2.198, "ML020424204": 2.273, "ML020601206": 2.005, "ML030120104": 2.222, "ML030122101": 2.304, "ML030122102": 2.3, "ML030122103": 2.243, "ML030122106": 2.069, "ML030201505": 2.428, "ML030406304": 2.386, "ML030412305": 2.271, "ML030421403": 2.266, "ML030422302": 2.337, "ML030524301": 2.355, "ML030524501": 2.378, "ML030532303": 2.366, "ML030532502": 2.495, "ML030532504": 2.558, "ML030707306": 2.149, "ML040503401": 2.367}, "2015": {"ML020201201": 2.411, "ML020208307": 2.372, "ML020220202": 2.16, "ML020220205": 2.396, "ML020220503": 2.29, "ML020424204": 2.11, "ML020601206": 1.851, "ML030120104": 2.352, "ML030122101": 2.371, "ML030122102": 2.437, "ML030122103": 2.323, "ML030122106": 2.162, "ML030201505": 2.558, "ML030406304": 2.383, "ML030412305": 2.359, "ML030421403": 2.433, "ML030422302": 2.539, "ML030524301": 2.504, "ML030524501": 2.449, "ML030532303": 2.528, "ML030532502": 2.635, "ML030532504": 2.65, "ML030707306": 2.041, "ML040503401": 2.2}, "2016": {"ML020201201": 2.519, "ML020208307": 2.497, "ML020220202": 2.29, "ML020220205": 2.414, "ML020220503": 2.434, "ML020424204": 2.332, "ML020601206": 2.177, "ML030120104": 2.413, "ML030122101": 2.517, "ML030122102": 2.538, "ML030122103": 2.493, "ML030122106": 2.363, "ML030201505": 2.612, "ML030406304": 2.526, "ML030412305": 2.463, "ML030421403": 2.486, "ML030422302": 2.512, "ML030524301": 2.517, "ML030524501": 2.539, "ML030532303": 2.592, "ML030532502": 2.751, "ML030532504": 2.604, "ML030707306": 2.251, "ML040503401": 2.474}, "2017": {"ML020201201": 2.584, "ML020208307": 2.278, "ML020220202": 2.485, "ML020220205": 2.704, "ML020220503": 2.59, "ML020424204": 2.411, "ML020601206": 2.043, "ML030120104": 2.672, "ML030122101": 2.546, "ML030122102": 2.67, "ML030122103": 2.555, "ML030122106": 2.452, "ML030201505": 2.695, "ML030406304": 2.692, "ML030412305": 2.524, "ML030421403": 2.429, "ML030422302": 2.53, "ML030524301": 2.608, "ML030524501": 2.75, "ML030532303": 2.721, "ML030532502": 2.872, "ML030532504": 2.664, "ML030707306": 2.283, "ML040503401": 2.4}}, "lightgbm": {"2013": {"ML020201201": 1.467, "ML020208307": 1.446, "ML020220202": 1.512, "ML020220205": 1.848, "ML020220503": 1.806, "ML020424204": 1.095, "ML020601206": 1.141, "ML030120104": 1.916, "ML030122101": 1.973, "ML030122102": 1.978, "ML030122103": 2.18, "ML030122106": 1.837, "ML030201505": 2.243, "ML030406304": 1.897, "ML030412305": 1.934, "ML030421403": 1.877, "ML030422302": 1.781, "ML030524301": 1.794, "ML030524501": 1.91, "ML030532303": 1.903, "ML030532502": 2.121, "ML030532504": 2.131, "ML030707306": 1.622, "ML040503401": 1.572}, "2014": {"ML020201201": 1.936, "ML020208307": 1.833, "ML020220202": 1.632, "ML020220205": 1.847, "ML020220503": 2.093, "ML020424204": 1.525, "ML020601206": 1.674, "ML030120104": 1.958, "ML030122101": 1.976, "ML030122102": 2.168, "ML030122103": 2.16, "ML030122106": 2.006, "ML030201505": 2.265, "ML030406304": 2.177, "ML030412305": 2.036, "ML030421403": 1.757, "ML030422302": 1.972, "ML030524301": 2.225, "ML030524501": 1.991, "ML030532303": 2.053, "ML030532502": 2.242, "ML030532504": 2.406, "ML030707306": 2.138, "ML040503401": 1.854}, "2015": {"ML020201201": 2.024, "ML020208307": 1.49, "ML020220202": 1.915, "ML020220205": 1.909, "ML020220503": 2.309, "ML020424204": 1.405, "ML020601206": 1.024, "ML030120104": 2.17, "ML030122101": 2.328, "ML030122102": 2.388, "ML030122103": 2.308, "ML030122106": 2.142, "ML030201505": 2.37, "ML030406304": 2.285, "ML030412305": 2.054, "ML030421403": 1.696, "ML030422302": 1.918, "ML030524301": 2.275, "ML030524501": 2.225, "ML030532303": 2.007, "ML030532502": 2.371, "ML030532504": 2.381, "ML030707306": 1.802, "ML040503401": 1.677}, "2016": {"ML020201201": 2.27, "ML020208307": 1.943, "ML020220202": 1.975, "ML020220205": 1.861, "ML020220503": 2.222, "ML020424204": 1.543, "ML020601206": 1.482, "ML030120104": 2.079, "ML030122101": 2.184, "ML030122102": 2.097, "ML030122103": 2.439, "ML030122106": 2.305, "ML030201505": 2.394, "ML030406304": 2.063, "ML030412305": 2.228, "ML030421403": 2.068, "ML030422302": 1.977, "ML030524301": 2.045, "ML030524501": 2.083, "ML030532303": 2.1, "ML030532502": 2.38, "ML030532504": 2.333, "ML030707306": 1.883, "ML040503401": 1.988}, "2017": {"ML020201201": 1.968, "ML020208307": 1.921, "ML020220202": 1.796, "ML020220205": 2.083, "ML020220503": 2.273, "ML020424204": 1.536, "ML020601206": 1.518, "ML030120104": 2.313, "ML030122101": 2.127, "ML030122102": 2.262, "ML030122103": 2.239, "ML030122106": 2.145, "ML030201505": 2.35, "ML030406304": 2.081, "ML030412305": 2.378, "ML030421403": 1.861, "ML030422302": 1.675, "ML030524301": 1.975, "ML030524501": 2.372, "ML030532303": 2.176, "ML030532502": 2.592, "ML030532504": 2.44, "ML030707306": 2.089, "ML040503401": 2.154}}, "lpjml_bc": {"2013": {"ML020201201": 2.024, "ML020208307": 2.111, "ML020220202": 1.675, "ML020220205": 1.746, "ML020220503": 2.068, "ML020424204": 1.268, "ML020601206": 1.598, "ML030120104": 1.823, "ML030122101": 1.99, "ML030122102": 2.212, "ML030122103": 2.227, "ML030122106": 2.051, "ML030201505": 2.359, "ML030406304": 2.56, "ML030412305": 2.047, "ML030421403": 2.229, "ML030422302": 2.295, "ML030524301": 2.293, "ML030524501": 2.185, "ML030532303": 2.23, "ML030532502": 2.586, "ML030532504": 2.486, "ML030707306": 1.922, "ML040503401": 2.175}, "2014": {"ML020201201": 1.604, "ML020208307": 1.356, "ML020220202": 1.541, "ML020220205": 1.697, "ML020220503": 2.071, "ML020424204": 1.186, "ML020601206": 1.109, "ML030120104": 1.98, "ML030122101": 2.094, "ML030122102": 2.179, "ML030122103": 2.281, "ML030122106": 2.158, "ML030201505": 2.106, "ML030406304": 2.082, "ML030412305": 1.94, "ML030421403": 1.566, "ML030422302": 1.469, "ML030524301": 1.817, "ML030524501": 2.043, "ML030532303": 2.122, "ML030532502": 2.389, "ML030532504": 2.434, "ML030707306": 1.607, "ML040503401": 1.549}, "2015": {"ML020201201": 1.436, "ML020208307": 1.145, "ML020220202": 1.266, "ML020220205": 1.382, "ML020220503": 1.723, "ML020424204": 0.822, "ML020601206": 0.878, "ML030120104": 1.205, "ML030122101": 1.694, "ML030122102": 1.57, "ML030122103": 2.164, "ML030122106": 1.933, "ML030201505": 2.023, "ML030406304": 1.988, "ML030412305": 1.903, "ML030421403": 1.385, "ML030422302": 1.339, "ML030524301": 1.614, "ML030524501": 1.876, "ML030532303": 2.03, "ML030532502": 2.259, "ML030532504": 2.345, "ML030707306": 1.603, "ML040503401": 1.528}, "2016": {"ML020201201": 2.416, "ML020208307": 2.36, "ML020220202": 2.025, "ML020220205": 2.173, "ML020220503": 2.525, "ML020424204": 1.757, "ML020601206": 1.759, "ML030120104": 2.495, "ML030122101": 2.171, "ML030122102": 2.643, "ML030122103": 2.187, "ML030122106": 2.097, "ML030201505": 2.743, "ML030406304": 2.758, "ML030412305": 2.501, "ML030421403": 2.624, "ML030422302": 2.478, "ML030524301": 2.644, "ML030524501": 2.507, "ML030532303": 2.593, "ML030532502": 2.865, "ML030532504": 2.599, "ML030707306": 2.135, "ML040503401": 2.36}, "2017": {"ML020201201": 2.125, "ML020208307": 2.146, "ML020220202": 1.911, "ML020220205": 1.974, "ML020220503": 2.431, "ML020424204": 1.665, "ML020601206": 1.809, "ML030120104": 2.304, "ML030122101": 2.079, "ML030122102": 2.314, "ML030122103": 2.127, "ML030122106": 1.986, "ML030201505": 2.79, "ML030406304": 2.488, "ML030412305": 2.231, "ML030421403": 2.394, "ML030422302": 2.237, "ML030524301": 2.263, "ML030524501": 2.266, "ML030532303": 2.313, "ML030532502": 2.569, "ML030532504": 2.567, "ML030707306": 1.97, "ML040503401": 2.167}}, "lstm_lf": {"2013": {"ML020201201": 2.196, "ML020208307": 2.165, "ML020220202": 2.107, "ML020220205": 2.194, "ML020220503": 2.087, "ML020424204": 1.799, "ML020601206": 1.805, "ML030120104": 2.143, "ML030122101": 2.216, "ML030122102": 2.145, "ML030122103": 2.237, "ML030122106": 2.057, "ML030201505": 2.318, "ML030406304": 2.207, "ML030412305": 2.138, "ML030421403": 2.162, "ML030422302": 2.218, "ML030524301": 2.217, "ML030524501": 2.192, "ML030532303": 2.259, "ML030532502": 2.512, "ML030532504": 2.575, "ML030707306": 2.014, "ML040503401": 2.155}, "2014": {"ML020201201": 2.208, "ML020208307": 2.189, "ML020220202": 2.097, "ML020220205": 2.178, "ML020220503": 2.093, "ML020424204": 2.106, "ML020601206": 2.082, "ML030120104": 2.091, "ML030122101": 2.12, "ML030122102": 2.119, "ML030122103": 2.196, "ML030122106": 2.007, "ML030201505": 2.267, "ML030406304": 2.215, "ML030412305": 2.104, "ML030421403": 2.141, "ML030422302": 2.199, "ML030524301": 2.204, "ML030524501": 2.155, "ML030532303": 2.247, "ML030532502": 2.468, "ML030532504": 2.544, "ML030707306": 2.078, "ML040503401": 2.194}, "2015": {"ML020201201": 2.506, "ML020208307": 2.42, "ML020220202": 2.384, "ML020220205": 2.495, "ML020220503": 2.348, "ML020424204": 2.395, "ML020601206": 1.716, "ML030120104": 2.432, "ML030122101": 2.421, "ML030122102": 2.437, "ML030122103": 2.463, "ML030122106": 2.239, "ML030201505": 2.582, "ML030406304": 2.605, "ML030412305": 2.516, "ML030421403": 2.23, "ML030422302": 2.573, "ML030524301": 2.507, "ML030524501": 2.506, "ML030532303": 2.602, "ML030532502": 2.764, "ML030532504": 2.754, "ML030707306": 2.277, "ML040503401": 2.549}, "2016": {"ML020201201": 2.673, "ML020208307": 2.513, "ML020220202": 2.553, "ML020220205": 2.634, "ML020220503": 2.59, "ML020424204": 2.317, "ML020601206": 1.732, "ML030120104": 2.542, "ML030122101": 2.397, "ML030122102": 2.587, "ML030122103": 2.557, "ML030122106": 2.283, "ML030201505": 2.715, "ML030406304": 2.69, "ML030412305": 2.463, "ML030421403": 2.557, "ML030422302": 2.658, "ML030524301": 2.69, "ML030524501": 2.673, "ML030532303": 2.733, "ML030532502": 2.923, "ML030532504": 2.756, "ML030707306": 2.321, "ML040503401": 2.653}, "2017": {"ML020201201": 2.65, "ML020208307": 2.608, "ML020220202": 2.529, "ML020220205": 2.58, "ML020220503": 2.549, "ML020424204": 2.543, "ML020601206": 2.463, "ML030120104": 2.517, "ML030122101": 2.569, "ML030122102": 2.555, "ML030122103": 2.627, "ML030122106": 2.455, "ML030201505": 2.687, "ML030406304": 2.677, "ML030412305": 2.476, "ML030421403": 2.583, "ML030422302": 2.629, "ML030524301": 2.686, "ML030524501": 2.588, "ML030532303": 2.655, "ML030532502": 2.906, "ML030532504": 2.726, "ML030707306": 2.466, "ML040503401": 2.66}}, "nlinear_lf": {"2013": {"ML020201201": 1.981, "ML020208307": 1.798, "ML020220202": 1.956, "ML020220205": 2.048, "ML020220503": 1.862, "ML020424204": 1.903, "ML020601206": 1.685, "ML030120104": 2.09, "ML030122101": 2.108, "ML030122102": 2.033, "ML030122103": 2.1, "ML030122106": 1.839, "ML030201505": 2.09, "ML030406304": 1.974, "ML030412305": 2.0, "ML030421403": 1.847, "ML030422302": 1.94, "ML030524301": 1.974, "ML030524501": 2.032, "ML030532303": 2.0, "ML030532502": 2.149, "ML030532504": 2.356, "ML030707306": 1.793, "ML040503401": 1.909}, "2014": {"ML020201201": 2.053, "ML020208307": 2.097, "ML020220202": 2.011, "ML020220205": 2.118, "ML020220503": 2.15, "ML020424204": 1.988, "ML020601206": 2.047, "ML030120104": 2.091, "ML030122101": 2.192, "ML030122102": 2.235, "ML030122103": 2.383, "ML030122106": 2.118, "ML030201505": 2.409, "ML030406304": 2.19, "ML030412305": 2.219, "ML030421403": 2.107, "ML030422302": 2.098, "ML030524301": 2.111, "ML030524501": 2.283, "ML030532303": 2.222, "ML030532502": 2.487, "ML030532504": 2.642, "ML030707306": 2.025, "ML040503401": 2.114}, "2015": {"ML020201201": 2.204, "ML020208307": 2.364, "ML020220202": 2.168, "ML020220205": 2.323, "ML020220503": 2.249, "ML020424204": 2.211, "ML020601206": 2.253, "ML030120104": 2.324, "ML030122101": 2.522, "ML030122102": 2.431, "ML030122103": 2.481, "ML030122106": 2.296, "ML030201505": 2.618, "ML030406304": 2.45, "ML030412305": 2.475, "ML030421403": 2.357, "ML030422302": 2.323, "ML030524301": 2.3, "ML030524501": 2.453, "ML030532303": 2.449, "ML030532502": 2.591, "ML030532504": 2.7, "ML030707306": 2.232, "ML040503401": 2.487}, "2016": {"ML020201201": 2.396, "ML020208307": 2.256, "ML020220202": 2.365, "ML020220205": 2.436, "ML020220503": 2.434, "ML020424204": 2.331, "ML020601206": 2.17, "ML030120104": 2.455, "ML030122101": 2.332, "ML030122102": 2.443, "ML030122103": 2.329, "ML030122106": 1.942, "ML030201505": 2.209, "ML030406304": 2.348, "ML030412305": 2.501, "ML030421403": 2.263, "ML030422302": 2.382, "ML030524301": 2.438, "ML030524501": 2.49, "ML030532303": 2.394, "ML030532502": 2.755, "ML030532504": 2.839, "ML030707306": 1.94, "ML040503401": 2.358}, "2017": {"ML020201201": 2.241, "ML020208307": 2.107, "ML020220202": 2.106, "ML020220205": 2.275, "ML020220503": 2.189, "ML020424204": 2.05, "ML020601206": 1.964, "ML030120104": 2.24, "ML030122101": 2.044, "ML030122102": 2.225, "ML030122103": 2.092, "ML030122106": 2.136, "ML030201505": 2.415, "ML030406304": 2.231, "ML030412305": 2.107, "ML030421403": 2.144, "ML030422302": 2.196, "ML030524301": 2.278, "ML030524501": 2.256, "ML030532303": 2.219, "ML030532502": 2.301, "ML030532504": 2.294, "ML030707306": 1.901, "ML040503401": 2.275}}, "patchtst_lf": {"2013": {"ML020201201": 1.935, "ML020208307": 1.999, "ML020220202": 1.897, "ML020220205": 1.965, "ML020220503": 2.088, "ML020424204": 1.926, "ML020601206": 1.958, "ML030120104": 2.003, "ML030122101": 2.246, "ML030122102": 2.07, "ML030122103": 2.186, "ML030122106": 2.092, "ML030201505": 2.326, "ML030406304": 2.113, "ML030412305": 2.117, "ML030421403": 2.003, "ML030422302": 1.965, "ML030524301": 1.951, "ML030524501": 2.112, "ML030532303": 2.142, "ML030532502": 2.344, "ML030532504": 2.536, "ML030707306": 1.982, "ML040503401": 2.01}, "2014": {"ML020201201": 2.266, "ML020208307": 2.244, "ML020220202": 2.104, "ML020220205": 2.329, "ML020220503": 1.927, "ML020424204": 2.264, "ML020601206": 2.198, "ML030120104": 2.253, "ML030122101": 2.117, "ML030122102": 2.174, "ML030122103": 2.017, "ML030122106": 1.931, "ML030201505": 2.087, "ML030406304": 2.238, "ML030412305": 1.884, "ML030421403": 2.197, "ML030422302": 2.284, "ML030524301": 2.254, "ML030524501": 2.185, "ML030532303": 2.272, "ML030532502": 2.234, "ML030532504": 2.456, "ML030707306": 2.041, "ML040503401": 2.311}, "2015": {"ML020201201": 2.475, "ML020208307": 2.424, "ML020220202": 2.433, "ML020220205": 2.562, "ML020220503": 2.52, "ML020424204": 2.451, "ML020601206": 2.347, "ML030120104": 2.55, "ML030122101": 2.581, "ML030122102": 2.569, "ML030122103": 2.644, "ML030122106": 2.602, "ML030201505": 2.617, "ML030406304": 2.437, "ML030412305": 2.329, "ML030421403": 2.389, "ML030422302": 2.474, "ML030524301": 2.495, "ML030524501": 2.477, "ML030532303": 2.533, "ML030532502": 2.804, "ML030532504": 2.804, "ML030707306": 2.271, "ML040503401": 2.393}, "2016": {"ML020201201": 2.485, "ML020208307": 2.423, "ML020220202": 2.339, "ML020220205": 2.501, "ML020220503": 2.245, "ML020424204": 2.461, "ML020601206": 2.338, "ML030120104": 2.433, "ML030122101": 2.429, "ML030122102": 2.409, "ML030122103": 2.381, "ML030122106": 2.16, "ML030201505": 2.489, "ML030406304": 2.564, "ML030412305": 2.434, "ML030421403": 2.358, "ML030422302": 2.483, "ML030524301": 2.496, "ML030524501": 2.493, "ML030532303": 2.557, "ML030532502": 2.583, "ML030532504": 2.666, "ML030707306": 2.352, "ML040503401": 2.467}, "2017": {"ML020201201": 2.04, "ML020208307": 2.053, "ML020220202": 1.886, "ML020220205": 2.101, "ML020220503": 2.179, "ML020424204": 2.083, "ML020601206": 2.003, "ML030120104": 2.143, "ML030122101": 2.273, "ML030122102": 2.354, "ML030122103": 2.17, "ML030122106": 2.222, "ML030201505": 2.457, "ML030406304": 2.215, "ML030412305": 2.26, "ML030421403": 2.024, "ML030422302": 2.03, "ML030524301": 2.04, "ML030524501": 2.295, "ML030532303": 2.188, "ML030532502": 2.432, "ML030532504": 2.57, "ML030707306": 1.873, "ML040503401": 2.077}}, "random_forest": {"2013": {"ML020201201": 1.713, "ML020208307": 1.641, "ML020220202": 1.808, "ML020220205": 1.87, "ML020220503": 2.019, "ML020424204": 1.392, "ML020601206": 1.381, "ML030120104": 1.979, "ML030122101": 2.005, "ML030122102": 2.033, "ML030122103": 2.112, "ML030122106": 2.013, "ML030201505": 2.224, "ML030406304": 1.92, "ML030412305": 1.964, "ML030421403": 1.786, "ML030422302": 1.806, "ML030524301": 1.91, "ML030524501": 2.034, "ML030532303": 1.949, "ML030532502": 2.19, "ML030532504": 2.253, "ML030707306": 1.74, "ML040503401": 1.69}, "2014": {"ML020201201": 2.055, "ML020208307": 1.91, "ML020220202": 1.96, "ML020220205": 1.919, "ML020220503": 2.114, "ML020424204": 1.704, "ML020601206": 1.777, "ML030120104": 2.05, "ML030122101": 2.043, "ML030122102": 2.086, "ML030122103": 2.155, "ML030122106": 2.036, "ML030201505": 2.262, "ML030406304": 2.203, "ML030412305": 2.038, "ML030421403": 1.855, "ML030422302": 2.061, "ML030524301": 2.163, "ML030524501": 2.088, "ML030532303": 2.086, "ML030532502": 2.284, "ML030532504": 2.344, "ML030707306": 1.989, "ML040503401": 1.917}, "2015": {"ML020201201": 2.071, "ML020208307": 1.899, "ML020220202": 2.021, "ML020220205": 2.008, "ML020220503": 2.213, "ML020424204": 1.69, "ML020601206": 1.682, "ML030120104": 2.124, "ML030122101": 2.162, "ML030122102": 2.196, "ML030122103": 2.236, "ML030122106": 2.151, "ML030201505": 2.325, "ML030406304": 2.184, "ML030412305": 2.161, "ML030421403": 1.983, "ML030422302": 2.089, "ML030524301": 2.152, "ML030524501": 2.165, "ML030532303": 2.14, "ML030532502": 2.366, "ML030532504": 2.391, "ML030707306": 1.977, "ML040503401": 2.033}, "2016": {"ML020201201": 2.149, "ML020208307": 1.883, "ML020220202": 2.058, "ML020220205": 2.036, "ML020220503": 2.144, "ML020424204": 1.622, "ML020601206": 1.617, "ML030120104": 2.123, "ML030122101": 2.11, "ML030122102": 2.106, "ML030122103": 2.206, "ML030122106": 2.121, "ML030201505": 2.284, "ML030406304": 2.006, "ML030412305": 2.2, "ML030421403": 1.908, "ML030422302": 1.961, "ML030524301": 2.176, "ML030524501": 2.157, "ML030532303": 2.116, "ML030532502": 2.303, "ML030532504": 2.276, "ML030707306": 1.833, "ML040503401": 1.926}, "2017": {"ML020201201": 2.097, "ML020208307": 1.988, "ML020220202": 2.015, "ML020220205": 2.091, "ML020220503": 2.249, "ML020424204": 1.814, "ML020601206": 1.8, "ML030120104": 2.218, "ML030122101": 2.163, "ML030122102": 2.17, "ML030122103": 2.194, "ML030122106": 2.134, "ML030201505": 2.269, "ML030406304": 2.167, "ML030412305": 2.304, "ML030421403": 2.006, "ML030422302": 1.977, "ML030524301": 2.072, "ML030524501": 2.279, "ML030532303": 2.118, "ML030532502": 2.431, "ML030532504": 2.295, "ML030707306": 2.018, "ML040503401": 2.122}}, "ridge": {"2013": {"ML020201201": 1.833, "ML020208307": 1.734, "ML020220202": 1.679, "ML020220205": 1.861, "ML020220503": 1.86, "ML020424204": 1.49, "ML020601206": 1.54, "ML030120104": 1.853, "ML030122101": 1.872, "ML030122102": 1.869, "ML030122103": 1.992, "ML030122106": 1.928, "ML030201505": 2.057, "ML030406304": 1.976, "ML030412305": 1.972, "ML030421403": 1.835, "ML030422302": 1.969, "ML030524301": 1.911, "ML030524501": 1.908, "ML030532303": 1.947, "ML030532502": 2.195, "ML030532504": 2.265, "ML030707306": 1.676, "ML040503401": 1.915}, "2014": {"ML020201201": 2.15, "ML020208307": 2.062, "ML020220202": 2.074, "ML020220205": 2.152, "ML020220503": 2.152, "ML020424204": 1.918, "ML020601206": 1.98, "ML030120104": 2.094, "ML030122101": 2.057, "ML030122102": 2.125, "ML030122103": 2.155, "ML030122106": 2.135, "ML030201505": 2.262, "ML030406304": 2.33, "ML030412305": 2.198, "ML030421403": 2.06, "ML030422302": 2.213, "ML030524301": 2.195, "ML030524501": 2.319, "ML030532303": 2.19, "ML030532502": 2.429, "ML030532504": 2.433, "ML030707306": 1.983, "ML040503401": 2.171}, "2015": {"ML020201201": 2.247, "ML020208307": 2.101, "ML020220202": 2.073, "ML020220205": 2.207, "ML020220503": 2.366, "ML020424204": 1.843, "ML020601206": 1.807, "ML030120104": 2.342, "ML030122101": 2.329, "ML030122102": 2.327, "ML030122103": 2.5, "ML030122106": 2.41, "ML030201505": 2.486, "ML030406304": 2.267, "ML030412305": 2.401, "ML030421403": 2.056, "ML030422302": 2.236, "ML030524301": 2.235, "ML030524501": 2.423, "ML030532303": 2.304, "ML030532502": 2.695, "ML030532504": 2.731, "ML030707306": 1.853, "ML040503401": 2.035}, "2016": {"ML020201201": 2.26, "ML020208307": 2.143, "ML020220202": 2.113, "ML020220205": 2.177, "ML020220503": 2.334, "ML020424204": 1.744, "ML020601206": 1.904, "ML030120104": 2.24, "ML030122101": 2.213, "ML030122102": 2.28, "ML030122103": 2.32, "ML030122106": 2.23, "ML030201505": 2.411, "ML030406304": 2.398, "ML030412305": 2.457, "ML030421403": 2.137, "ML030422302": 2.185, "ML030524301": 2.249, "ML030524501": 2.426, "ML030532303": 2.274, "ML030532502": 2.657, "ML030532504": 2.629, "ML030707306": 2.111, "ML040503401": 2.334}, "2017": {"ML020201201": 2.158, "ML020208307": 1.921, "ML020220202": 1.94, "ML020220205": 2.079, "ML020220503": 2.2, "ML020424204": 1.717, "ML020601206": 1.772, "ML030120104": 2.082, "ML030122101": 2.156, "ML030122102": 2.213, "ML030122103": 2.326, "ML030122106": 2.165, "ML030201505": 2.248, "ML030406304": 2.35, "ML030412305": 2.375, "ML030421403": 2.038, "ML030422302": 2.06, "ML030524301": 2.174, "ML030524501": 2.271, "ML030532303": 2.291, "ML030532502": 2.569, "ML030532504": 2.395, "ML030707306": 2.037, "ML040503401": 2.115}}, "tabdpt": {"2013": {"ML020201201": 1.778, "ML020208307": 1.753, "ML020220202": 1.797, "ML020220205": 1.823, "ML020220503": 1.954, "ML020424204": 1.495, "ML020601206": 1.544, "ML030120104": 1.933, "ML030122101": 1.974, "ML030122102": 2.001, "ML030122103": 2.088, "ML030122106": 2.022, "ML030201505": 1.988, "ML030406304": 1.877, "ML030412305": 1.925, "ML030421403": 1.706, "ML030422302": 1.787, "ML030524301": 1.837, "ML030524501": 1.856, "ML030532303": 1.954, "ML030532502": 2.036, "ML030532504": 2.151, "ML030707306": 1.622, "ML040503401": 1.711}, "2014": {"ML020201201": 2.041, "ML020208307": 1.93, "ML020220202": 1.999, "ML020220205": 1.896, "ML020220503": 2.074, "ML020424204": 1.664, "ML020601206": 1.763, "ML030120104": 1.962, "ML030122101": 1.99, "ML030122102": 2.055, "ML030122103": 2.092, "ML030122106": 2.003, "ML030201505": 2.185, "ML030406304": 2.103, "ML030412305": 2.087, "ML030421403": 1.891, "ML030422302": 2.075, "ML030524301": 2.16, "ML030524501": 2.035, "ML030532303": 2.081, "ML030532502": 2.18, "ML030532504": 2.216, "ML030707306": 2.008, "ML040503401": 2.005}, "2015": {"ML020201201": 2.063, "ML020208307": 2.004, "ML020220202": 2.006, "ML020220205": 2.086, "ML020220503": 2.371, "ML020424204": 1.661, "ML020601206": 1.65, "ML030120104": 2.116, "ML030122101": 2.109, "ML030122102": 2.222, "ML030122103": 2.272, "ML030122106": 2.19, "ML030201505": 2.353, "ML030406304": 2.245, "ML030412305": 2.236, "ML030421403": 2.123, "ML030422302": 2.132, "ML030524301": 2.136, "ML030524501": 2.251, "ML030532303": 2.159, "ML030532502": 2.56, "ML030532504": 2.447, "ML030707306": 1.977, "ML040503401": 2.149}, "2016": {"ML020201201": 2.149, "ML020208307": 1.98, "ML020220202": 2.067, "ML020220205": 2.1, "ML020220503": 2.335, "ML020424204": 1.665, "ML020601206": 1.702, "ML030120104": 2.196, "ML030122101": 2.138, "ML030122102": 2.193, "ML030122103": 2.277, "ML030122106": 2.18, "ML030201505": 2.328, "ML030406304": 2.209, "ML030412305": 2.251, "ML030421403": 2.02, "ML030422302": 2.059, "ML030524301": 2.184, "ML030524501": 2.218, "ML030532303": 2.117, "ML030532502": 2.459, "ML030532504": 2.372, "ML030707306": 1.959, "ML040503401": 2.144}, "2017": {"ML020201201": 2.317, "ML020208307": 2.08, "ML020220202": 1.983, "ML020220205": 2.139, "ML020220503": 2.25, "ML020424204": 1.647, "ML020601206": 1.66, "ML030120104": 2.175, "ML030122101": 2.109, "ML030122102": 2.289, "ML030122103": 2.336, "ML030122106": 2.215, "ML030201505": 2.227, "ML030406304": 2.417, "ML030412305": 2.266, "ML030421403": 2.257, "ML030422302": 2.289, "ML030524301": 2.391, "ML030524501": 2.33, "ML030532303": 2.316, "ML030532502": 2.53, "ML030532504": 2.237, "ML030707306": 2.078, "ML040503401": 2.296}}, "tabicl": {"2013": {"ML020201201": 1.877, "ML020208307": 1.724, "ML020220202": 1.679, "ML020220205": 1.693, "ML020220503": 1.873, "ML020424204": 1.361, "ML020601206": 1.373, "ML030120104": 1.924, "ML030122101": 1.951, "ML030122102": 2.042, "ML030122103": 2.138, "ML030122106": 1.994, "ML030201505": 2.082, "ML030406304": 2.053, "ML030412305": 1.782, "ML030421403": 1.722, "ML030422302": 1.82, "ML030524301": 1.913, "ML030524501": 1.917, "ML030532303": 1.921, "ML030532502": 2.221, "ML030532504": 2.261, "ML030707306": 1.551, "ML040503401": 1.648}, "2014": {"ML020201201": 2.06, "ML020208307": 1.848, "ML020220202": 1.832, "ML020220205": 1.806, "ML020220503": 2.055, "ML020424204": 1.582, "ML020601206": 1.553, "ML030120104": 2.004, "ML030122101": 1.972, "ML030122102": 2.087, "ML030122103": 2.098, "ML030122106": 1.937, "ML030201505": 2.229, "ML030406304": 2.32, "ML030412305": 1.977, "ML030421403": 1.862, "ML030422302": 2.062, "ML030524301": 2.158, "ML030524501": 2.096, "ML030532303": 2.11, "ML030532502": 2.303, "ML030532504": 2.351, "ML030707306": 1.967, "ML040503401": 1.96}, "2015": {"ML020201201": 2.144, "ML020208307": 1.927, "ML020220202": 1.926, "ML020220205": 2.004, "ML020220503": 2.297, "ML020424204": 1.644, "ML020601206": 1.519, "ML030120104": 2.196, "ML030122101": 2.173, "ML030122102": 2.297, "ML030122103": 2.241, "ML030122106": 2.155, "ML030201505": 2.41, "ML030406304": 2.339, "ML030412305": 2.207, "ML030421403": 2.092, "ML030422302": 2.057, "ML030524301": 2.2, "ML030524501": 2.253, "ML030532303": 2.269, "ML030532502": 2.571, "ML030532504": 2.527, "ML030707306": 1.919, "ML040503401": 2.106}, "2016": {"ML020201201": 2.268, "ML020208307": 2.043, "ML020220202": 2.016, "ML020220205": 2.003, "ML020220503": 2.286, "ML020424204": 1.694, "ML020601206": 1.695, "ML030120104": 2.236, "ML030122101": 2.105, "ML030122102": 2.232, "ML030122103": 2.319, "ML030122106": 2.167, "ML030201505": 2.303, "ML030406304": 2.306, "ML030412305": 2.187, "ML030421403": 2.088, "ML030422302": 1.973, "ML030524301": 2.185, "ML030524501": 2.171, "ML030532303": 2.124, "ML030532502": 2.502, "ML030532504": 2.472, "ML030707306": 1.908, "ML040503401": 2.132}, "2017": {"ML020201201": 2.361, "ML020208307": 2.057, "ML020220202": 1.988, "ML020220205": 2.041, "ML020220503": 2.266, "ML020424204": 1.73, "ML020601206": 1.72, "ML030120104": 2.269, "ML030122101": 2.126, "ML030122102": 2.289, "ML030122103": 2.336, "ML030122106": 2.242, "ML030201505": 2.184, "ML030406304": 2.469, "ML030412305": 2.237, "ML030421403": 2.329, "ML030422302": 2.143, "ML030524301": 2.352, "ML030524501": 2.29, "ML030532303": 2.317, "ML030532502": 2.608, "ML030532504": 2.319, "ML030707306": 2.1, "ML040503401": 2.32}}, "tabpfn": {"2013": {"ML020201201": 1.827, "ML020208307": 1.732, "ML020220202": 1.711, "ML020220205": 1.698, "ML020220503": 1.856, "ML020424204": 1.314, "ML020601206": 1.337, "ML030120104": 1.901, "ML030122101": 1.945, "ML030122102": 1.997, "ML030122103": 2.097, "ML030122106": 1.973, "ML030201505": 2.069, "ML030406304": 2.014, "ML030412305": 1.818, "ML030421403": 1.686, "ML030422302": 1.759, "ML030524301": 1.894, "ML030524501": 1.862, "ML030532303": 1.956, "ML030532502": 2.092, "ML030532504": 2.232, "ML030707306": 1.483, "ML040503401": 1.679}, "2014": {"ML020201201": 2.155, "ML020208307": 2.052, "ML020220202": 1.859, "ML020220205": 1.821, "ML020220503": 2.153, "ML020424204": 1.528, "ML020601206": 1.648, "ML030120104": 1.951, "ML030122101": 1.95, "ML030122102": 2.178, "ML030122103": 2.122, "ML030122106": 1.975, "ML030201505": 2.24, "ML030406304": 2.387, "ML030412305": 2.011, "ML030421403": 2.037, "ML030422302": 2.1, "ML030524301": 2.262, "ML030524501": 2.176, "ML030532303": 2.171, "ML030532502": 2.343, "ML030532504": 2.43, "ML030707306": 1.822, "ML040503401": 2.15}, "2015": {"ML020201201": 2.276, "ML020208307": 1.987, "ML020220202": 2.201, "ML020220205": 2.324, "ML020220503": 2.503, "ML020424204": 1.552, "ML020601206": 1.383, "ML030120104": 2.349, "ML030122101": 2.149, "ML030122102": 2.352, "ML030122103": 2.36, "ML030122106": 2.36, "ML030201505": 2.491, "ML030406304": 2.502, "ML030412305": 2.277, "ML030421403": 2.348, "ML030422302": 2.343, "ML030524301": 2.396, "ML030524501": 2.487, "ML030532303": 2.355, "ML030532502": 2.71, "ML030532504": 2.655, "ML030707306": 2.012, "ML040503401": 2.42}, "2016": {"ML020201201": 2.251, "ML020208307": 2.185, "ML020220202": 1.961, "ML020220205": 2.03, "ML020220503": 2.245, "ML020424204": 1.716, "ML020601206": 1.716, "ML030120104": 2.218, "ML030122101": 2.065, "ML030122102": 2.261, "ML030122103": 2.306, "ML030122106": 2.099, "ML030201505": 2.313, "ML030406304": 2.354, "ML030412305": 2.131, "ML030421403": 2.225, "ML030422302": 2.225, "ML030524301": 2.32, "ML030524501": 2.263, "ML030532303": 2.234, "ML030532502": 2.524, "ML030532504": 2.429, "ML030707306": 1.874, "ML040503401": 2.314}, "2017": {"ML020201201": 2.32, "ML020208307": 2.215, "ML020220202": 1.956, "ML020220205": 2.013, "ML020220503": 2.248, "ML020424204": 1.755, "ML020601206": 1.712, "ML030120104": 2.236, "ML030122101": 2.113, "ML030122102": 2.329, "ML030122103": 2.296, "ML030122106": 2.177, "ML030201505": 2.33, "ML030406304": 2.56, "ML030412305": 2.257, "ML030421403": 2.252, "ML030422302": 2.157, "ML030524301": 2.475, "ML030524501": 2.307, "ML030532303": 2.411, "ML030532502": 2.513, "ML030532504": 2.366, "ML030707306": 2.116, "ML040503401": 2.503}}, "transformer_lf": {"2013": {"ML020201201": 1.977, "ML020208307": 1.896, "ML020220202": 1.763, "ML020220205": 2.016, "ML020220503": 2.02, "ML020424204": 1.702, "ML020601206": 1.614, "ML030120104": 1.918, "ML030122101": 2.125, "ML030122102": 2.057, "ML030122103": 2.182, "ML030122106": 2.0, "ML030201505": 2.213, "ML030406304": 1.999, "ML030412305": 2.044, "ML030421403": 2.08, "ML030422302": 2.186, "ML030524301": 2.115, "ML030524501": 2.163, "ML030532303": 1.984, "ML030532502": 2.367, "ML030532504": 2.428, "ML030707306": 1.504, "ML040503401": 1.899}, "2014": {"ML020201201": 2.113, "ML020208307": 2.182, "ML020220202": 2.052, "ML020220205": 2.154, "ML020220503": 2.068, "ML020424204": 1.989, "ML020601206": 1.887, "ML030120104": 2.044, "ML030122101": 2.117, "ML030122102": 2.139, "ML030122103": 2.142, "ML030122106": 1.965, "ML030201505": 2.362, "ML030406304": 2.159, "ML030412305": 2.095, "ML030421403": 2.155, "ML030422302": 2.12, "ML030524301": 2.12, "ML030524501": 2.269, "ML030532303": 2.201, "ML030532502": 2.435, "ML030532504": 2.43, "ML030707306": 1.894, "ML040503401": 2.074}, "2015": {"ML020201201": 2.103, "ML020208307": 2.089, "ML020220202": 1.962, "ML020220205": 2.18, "ML020220503": 2.251, "ML020424204": 1.739, "ML020601206": 1.485, "ML030120104": 2.126, "ML030122101": 2.228, "ML030122102": 2.204, "ML030122103": 2.351, "ML030122106": 2.222, "ML030201505": 2.319, "ML030406304": 2.272, "ML030412305": 2.293, "ML030421403": 2.073, "ML030422302": 2.277, "ML030524301": 2.264, "ML030524501": 2.304, "ML030532303": 2.38, "ML030532502": 2.621, "ML030532504": 2.561, "ML030707306": 1.692, "ML040503401": 2.034}, "2016": {"ML020201201": 2.447, "ML020208307": 2.365, "ML020220202": 2.303, "ML020220205": 2.346, "ML020220503": 2.434, "ML020424204": 2.259, "ML020601206": 1.979, "ML030120104": 2.396, "ML030122101": 2.289, "ML030122102": 2.249, "ML030122103": 2.397, "ML030122106": 2.24, "ML030201505": 2.476, "ML030406304": 2.524, "ML030412305": 2.476, "ML030421403": 2.405, "ML030422302": 2.47, "ML030524301": 2.502, "ML030524501": 2.466, "ML030532303": 2.583, "ML030532502": 2.711, "ML030532504": 2.626, "ML030707306": 2.07, "ML040503401": 2.469}, "2017": {"ML020201201": 2.276, "ML020208307": 2.256, "ML020220202": 2.095, "ML020220205": 2.297, "ML020220503": 2.294, "ML020424204": 2.064, "ML020601206": 1.971, "ML030120104": 2.327, "ML030122101": 2.443, "ML030122102": 2.357, "ML030122103": 2.437, "ML030122106": 2.295, "ML030201505": 2.347, "ML030406304": 2.483, "ML030412305": 2.257, "ML030421403": 2.302, "ML030422302": 2.313, "ML030524301": 2.363, "ML030524501": 2.288, "ML030532303": 2.339, "ML030532502": 2.547, "ML030532504": 2.503, "ML030707306": 2.15, "ML040503401": 2.368}}, "trend": {"2013": {"ML020201201": 2.229, "ML020208307": 2.495, "ML020220202": 2.009, "ML020220205": 1.667, "ML020220503": 1.99, "ML020424204": 1.352, "ML020601206": 1.48, "ML030120104": 2.28, "ML030122101": 1.986, "ML030122102": 2.047, "ML030122103": 2.111, "ML030122106": 1.983, "ML030201505": 2.791, "ML030406304": 2.154, "ML030412305": 2.18, "ML030421403": 2.632, "ML030422302": 1.795, "ML030524301": 1.989, "ML030524501": 2.079, "ML030532303": 2.039, "ML030532502": 2.409, "ML030532504": 2.423, "ML030707306": 2.073, "ML040503401": 2.56}, "2014": {"ML020201201": 2.225, "ML020208307": 2.6, "ML020220202": 2.014, "ML020220205": 1.679, "ML020220503": 2.022, "ML020424204": 1.396, "ML020601206": 1.472, "ML030120104": 2.32, "ML030122101": 1.999, "ML030122102": 2.053, "ML030122103": 2.386, "ML030122106": 1.997, "ML030201505": 2.779, "ML030406304": 2.131, "ML030412305": 2.18, "ML030421403": 2.511, "ML030422302": 1.798, "ML030524301": 2.565, "ML030524501": 2.082, "ML030532303": 2.064, "ML030532502": 2.39, "ML030532504": 2.422, "ML030707306": 2.061, "ML040503401": 2.526}, "2015": {"ML020201201": 2.294, "ML020208307": 2.705, "ML020220202": 2.041, "ML020220205": 1.722, "ML020220503": 2.575, "ML020424204": 2.109, "ML020601206": 1.475, "ML030120104": 2.543, "ML030122101": 2.316, "ML030122102": 2.082, "ML030122103": 2.509, "ML030122106": 2.03, "ML030201505": 2.807, "ML030406304": 2.169, "ML030412305": 2.367, "ML030421403": 2.775, "ML030422302": 1.839, "ML030524301": 2.636, "ML030524501": 2.121, "ML030532303": 2.09, "ML030532502": 2.431, "ML030532504": 2.427, "ML030707306": 2.137, "ML040503401": 2.579}, "2016": {"ML020201201": 2.468, "ML020208307": 2.711, "ML020220202": 2.051, "ML020220205": 1.767, "ML020220503": 2.754, "ML020424204": 2.207, "ML020601206": 1.498, "ML030120104": 2.717, "ML030122101": 2.371, "ML030122102": 2.715, "ML030122103": 2.55, "ML030122106": 2.051, "ML030201505": 2.86, "ML030406304": 2.207, "ML030412305": 2.462, "ML030421403": 2.96, "ML030422302": 2.685, "ML030524301": 2.601, "ML030524501": 2.156, "ML030532303": 2.706, "ML030532502": 2.469, "ML030532504": 2.434, "ML030707306": 2.229, "ML040503401": 2.719}, "2017": {"ML020201201": 2.459, "ML020208307": 2.625, "ML020220202": 2.072, "ML020220205": 2.427, "ML020220503": 2.867, "ML020424204": 2.153, "ML020601206": 1.967, "ML030120104": 2.69, "ML030122101": 2.426, "ML030122102": 2.791, "ML030122103": 2.633, "ML030122106": 2.483, "ML030201505": 2.926, "ML030406304": 2.222, "ML030412305": 2.427, "ML030421403": 2.989, "ML030422302": 2.717, "ML030524301": 2.098, "ML030524501": 3.003, "ML030532303": 2.625, "ML030532502": 3.082, "ML030532504": 2.45, "ML030707306": 2.262, "ML040503401": 2.679}}, "tst_lf": {"2013": {"ML020201201": 2.004, "ML020208307": 1.872, "ML020220202": 1.748, "ML020220205": 2.086, "ML020220503": 1.91, "ML020424204": 1.881, "ML020601206": 1.649, "ML030120104": 1.919, "ML030122101": 2.06, "ML030122102": 1.998, "ML030122103": 2.032, "ML030122106": 1.785, "ML030201505": 2.297, "ML030406304": 1.985, "ML030412305": 2.033, "ML030421403": 1.859, "ML030422302": 2.043, "ML030524301": 2.075, "ML030524501": 2.059, "ML030532303": 2.201, "ML030532502": 2.341, "ML030532504": 2.47, "ML030707306": 1.725, "ML040503401": 1.81}, "2014": {"ML020201201": 2.212, "ML020208307": 2.139, "ML020220202": 2.041, "ML020220205": 2.209, "ML020220503": 2.138, "ML020424204": 2.151, "ML020601206": 2.001, "ML030120104": 2.084, "ML030122101": 2.174, "ML030122102": 2.165, "ML030122103": 2.245, "ML030122106": 2.027, "ML030201505": 2.42, "ML030406304": 2.224, "ML030412305": 2.217, "ML030421403": 2.089, "ML030422302": 2.222, "ML030524301": 2.235, "ML030524501": 2.229, "ML030532303": 2.359, "ML030532502": 2.404, "ML030532504": 2.483, "ML030707306": 2.059, "ML040503401": 2.119}, "2015": {"ML020201201": 2.362, "ML020208307": 2.258, "ML020220202": 2.128, "ML020220205": 2.421, "ML020220503": 2.341, "ML020424204": 2.231, "ML020601206": 1.971, "ML030120104": 2.386, "ML030122101": 2.487, "ML030122102": 2.479, "ML030122103": 2.461, "ML030122106": 2.285, "ML030201505": 2.655, "ML030406304": 2.4, "ML030412305": 2.39, "ML030421403": 2.218, "ML030422302": 2.41, "ML030524301": 2.427, "ML030524501": 2.416, "ML030532303": 2.532, "ML030532502": 2.637, "ML030532504": 2.588, "ML030707306": 2.242, "ML040503401": 2.29}, "2016": {"ML020201201": 2.424, "ML020208307": 2.353, "ML020220202": 2.148, "ML020220205": 2.436, "ML020220503": 2.274, "ML020424204": 2.37, "ML020601206": 2.169, "ML030120104": 2.372, "ML030122101": 2.425, "ML030122102": 2.432, "ML030122103": 2.296, "ML030122106": 2.213, "ML030201505": 2.565, "ML030406304": 2.413, "ML030412305": 2.324, "ML030421403": 2.225, "ML030422302": 2.409, "ML030524301": 2.429, "ML030524501": 2.388, "ML030532303": 2.502, "ML030532502": 2.594, "ML030532504": 2.498, "ML030707306": 2.174, "ML040503401": 2.332}, "2017": {"ML020201201": 2.44, "ML020208307": 2.326, "ML020220202": 2.17, "ML020220205": 2.494, "ML020220503": 2.441, "ML020424204": 2.348, "ML020601206": 2.208, "ML030120104": 2.425, "ML030122101": 2.47, "ML030122102": 2.475, "ML030122103": 2.457, "ML030122106": 2.33, "ML030201505": 2.62, "ML030406304": 2.447, "ML030412305": 2.382, "ML030421403": 2.331, "ML030422302": 2.406, "ML030524301": 2.435, "ML030524501": 2.452, "ML030532303": 2.523, "ML030532502": 2.752, "ML030532504": 2.579, "ML030707306": 2.232, "ML040503401": 2.348}}, "twso_bc": {"2013": {"ML030406304": 1.929, "ML030422302": 1.466, "ML030524301": 1.607, "ML030532504": 2.283, "ML040503401": 1.321}, "2014": {"ML030406304": 3.143, "ML030422302": 2.208, "ML030524301": 3.022, "ML030532504": 2.548, "ML040503401": 2.54}, "2015": {"ML030406304": 1.757, "ML030422302": 2.001, "ML030524301": 1.955, "ML030532504": 2.233, "ML040503401": 1.576}, "2016": {"ML030406304": 2.059, "ML030422302": 1.979, "ML030524301": 2.2, "ML030532504": 2.32, "ML040503401": 1.504}, "2017": {"ML030406304": 1.943, "ML030422302": 1.809, "ML030524301": 2.087, "ML030532504": 2.159, "ML040503401": 1.412}}, "xgboost": {"2013": {"ML020201201": 1.766, "ML020208307": 1.71, "ML020220202": 1.827, "ML020220205": 1.973, "ML020220503": 1.988, "ML020424204": 1.523, "ML020601206": 1.512, "ML030120104": 1.97, "ML030122101": 1.982, "ML030122102": 1.983, "ML030122103": 2.145, "ML030122106": 1.995, "ML030201505": 2.221, "ML030406304": 1.951, "ML030412305": 1.979, "ML030421403": 1.861, "ML030422302": 1.899, "ML030524301": 1.967, "ML030524501": 1.95, "ML030532303": 1.952, "ML030532502": 2.124, "ML030532504": 2.179, "ML030707306": 1.851, "ML040503401": 1.784}, "2014": {"ML020201201": 2.048, "ML020208307": 1.906, "ML020220202": 1.967, "ML020220205": 1.993, "ML020220503": 2.113, "ML020424204": 1.706, "ML020601206": 1.687, "ML030120104": 2.021, "ML030122101": 2.045, "ML030122102": 2.105, "ML030122103": 2.146, "ML030122106": 2.002, "ML030201505": 2.255, "ML030406304": 2.181, "ML030412305": 2.035, "ML030421403": 1.86, "ML030422302": 2.083, "ML030524301": 2.178, "ML030524501": 2.055, "ML030532303": 2.05, "ML030532502": 2.246, "ML030532504": 2.285, "ML030707306": 1.967, "ML040503401": 1.917}, "2015": {"ML020201201": 2.056, "ML020208307": 1.97, "ML020220202": 1.999, "ML020220205": 2.143, "ML020220503": 2.167, "ML020424204": 1.751, "ML020601206": 1.718, "ML030120104": 2.157, "ML030122101": 2.154, "ML030122102": 2.155, "ML030122103": 2.153, "ML030122106": 2.075, "ML030201505": 2.276, "ML030406304": 2.191, "ML030412305": 2.148, "ML030421403": 2.143, "ML030422302": 2.164, "ML030524301": 2.119, "ML030524501": 2.165, "ML030532303": 2.115, "ML030532502": 2.296, "ML030532504": 2.309, "ML030707306": 2.054, "ML040503401": 2.181}, "2016": {"ML020201201": 2.145, "ML020208307": 2.004, "ML020220202": 2.045, "ML020220205": 2.07, "ML020220503": 2.202, "ML020424204": 1.773, "ML020601206": 1.744, "ML030120104": 2.107, "ML030122101": 2.097, "ML030122102": 2.106, "ML030122103": 2.245, "ML030122106": 2.146, "ML030201505": 2.278, "ML030406304": 2.179, "ML030412305": 2.225, "ML030421403": 2.098, "ML030422302": 2.137, "ML030524301": 2.146, "ML030524501": 2.19, "ML030532303": 2.153, "ML030532502": 2.295, "ML030532504": 2.29, "ML030707306": 2.009, "ML040503401": 2.126}, "2017": {"ML020201201": 2.101, "ML020208307": 2.008, "ML020220202": 2.005, "ML020220205": 2.12, "ML020220503": 2.309, "ML020424204": 1.816, "ML020601206": 1.823, "ML030120104": 2.21, "ML030122101": 2.172, "ML030122102": 2.176, "ML030122103": 2.271, "ML030122106": 2.254, "ML030201505": 2.291, "ML030406304": 2.214, "ML030412305": 2.26, "ML030421403": 1.977, "ML030422302": 1.952, "ML030524301": 2.124, "ML030524501": 2.253, "ML030532303": 2.116, "ML030532502": 2.394, "ML030532504": 2.334, "ML030707306": 2.099, "ML040503401": 2.177}}}, "n_regions": 24}}, "note": "Grey fill and black borders come from the same admin polygons as the choropleth (metropolitan extent for US/FR). Viridis on benchmark regions; year slider for single years. Colors autoscale to pooled actual+pred."};
+    const SHAP_DATA = {"available": true, "shap_dir": "/lustre/backup/SHARED/AIN/agml/output/shap_importance/maize_ML_eos", "by_key": {"maize_ML|||random_forest": {"model": "random_forest", "model_label": "Random Forest", "dataset": "maize_ML", "crop": "maize", "country": "ML", "horizon": "eos", "explainer": "TreeSHAP", "n_origins": 5, "meta_groups": [{"name": "Vegetation", "share_pct": 26.18}, {"name": "Soil moisture", "share_pct": 20.65}, {"name": "Temperature", "share_pct": 17.06}, {"name": "Water", "share_pct": 16.57}, {"name": "Other", "share_pct": 10.29}, {"name": "Radiation", "share_pct": 4.34}, {"name": "Static", "share_pct": 2.72}], "top_features": [{"name": "fpar_mean_0", "mean_abs_shap": 0.04448282, "rank": 1}, {"name": "loc_x", "mean_abs_shap": 0.03570794, "rank": 2}, {"name": "rsm_mean_4", "mean_abs_shap": 0.01195947, "rank": 3}, {"name": "et0_mean_7", "mean_abs_shap": 0.01164581, "rank": 4}, {"name": "ssm_mean_0", "mean_abs_shap": 0.01160858, "rank": 5}, {"name": "ssm_mean_4", "mean_abs_shap": 0.01113613, "rank": 6}, {"name": "ssm_mean_5", "mean_abs_shap": 0.01037497, "rank": 7}, {"name": "awc", "mean_abs_shap": 0.00989447, "rank": 8}, {"name": "rsm_mean_0", "mean_abs_shap": 0.00888738, "rank": 9}, {"name": "ndvi_mean_0", "mean_abs_shap": 0.00781962, "rank": 10}, {"name": "tavg_mean_6", "mean_abs_shap": 0.00721563, "rank": 11}, {"name": "gdd_sum_6", "mean_abs_shap": 0.00698717, "rank": 12}, {"name": "ndvi_mean_1", "mean_abs_shap": 0.00661226, "rank": 13}, {"name": "rsm_mean_5", "mean_abs_shap": 0.00653703, "rank": 14}, {"name": "rad_mean_7", "mean_abs_shap": 0.00648433, "rank": 15}]}, "maize_ML|||transformer_lf": {"model": "transformer_lf", "model_label": "Transformer", "dataset": "maize_ML", "crop": "maize", "country": "ML", "horizon": "eos", "explainer": "GradientSHAP", "n_origins": 5, "meta_groups": [{"name": "Water", "share_pct": 23.64}, {"name": "Temperature", "share_pct": 19.64}, {"name": "Vegetation", "share_pct": 17.37}, {"name": "Soil moisture", "share_pct": 14.75}, {"name": "Static", "share_pct": 13.58}, {"name": "Radiation", "share_pct": 8.25}], "top_features": [{"name": "ts:cwb", "mean_abs_shap": 0.28067928, "rank": 1}, {"name": "ts:ndvi", "mean_abs_shap": 0.25577257, "rank": 2}, {"name": "ts:rsm", "mean_abs_shap": 0.21814897, "rank": 3}, {"name": "ts:tmin", "mean_abs_shap": 0.18472638, "rank": 4}, {"name": "ts:prec", "mean_abs_shap": 0.18083894, "rank": 5}, {"name": "ts:rad", "mean_abs_shap": 0.17532281, "rank": 6}, {"name": "ctx:year", "mean_abs_shap": 0.17083314, "rank": 7}, {"name": "ts:tmax", "mean_abs_shap": 0.12995515, "rank": 8}, {"name": "ts:fpar", "mean_abs_shap": 0.12861182, "rank": 9}, {"name": "ts:tavg", "mean_abs_shap": 0.10105319, "rank": 10}, {"name": "ts:ssm", "mean_abs_shap": 0.08452297, "rank": 11}, {"name": "ctx:bulk_density", "mean_abs_shap": 0.06079423, "rank": 12}, {"name": "ts:vpd", "mean_abs_shap": 0.03805658, "rank": 13}, {"name": "ctx:awc", "mean_abs_shap": 0.02997291, "rank": 14}, {"name": "ctx:drainage_class", "mean_abs_shap": 0.02949407, "rank": 15}]}}};
+    const coverageInfo = document.getElementById("coverage-info");
+    const heatmapWrap = document.getElementById("heatmap-wrap");
+    const datasetFilter = document.getElementById("dataset-filter");
+    const modelFilter = document.getElementById("model-filter");
+    const groupDatasets = document.getElementById("group-datasets");
+    const colorModeSelect = document.getElementById("color-mode");
+    const selectionLabel = document.getElementById("selection-label");
+    const missingNote = document.getElementById("missing-note");
+    const imgGrid = document.getElementById("img-grid");
+    const drillColB = document.getElementById("drill-col-b");
+    const mapCaptionLeft = document.getElementById("map-caption-left");
+    const mapCaptionRight = document.getElementById("map-caption-right");
+    const drillImageA = document.getElementById("drill-image-a");
+    const drillImageB = document.getElementById("drill-image-b");
+    const mapGridDynamic = document.getElementById("map-grid-dynamic");
+    const regionMapActual = document.getElementById("region-map-actual");
+    const regionMapPred = document.getElementById("region-map-pred");
+    const regionMapLegendActual = document.getElementById("region-map-legend-actual");
+    const regionMapLegendPred = document.getElementById("region-map-legend-pred");
+    const mapYearControls = document.getElementById("map-year-controls");
+    const mapYearSlider = document.getElementById("map-year-slider");
+    const mapYearLabel = document.getElementById("map-year-label");
+    const mapCaptionLeftDyn = document.getElementById("map-caption-left-dyn");
+    const mapCaptionRightDyn = document.getElementById("map-caption-right-dyn");
+    const panelButtons = Array.from(document.querySelectorAll(".toolbar button"));
+    const shapPanelBtn = document.getElementById("shap-panel-btn");
+    const shapPanel = document.getElementById("shap-panel");
+    const shapCaption = document.getElementById("shap-caption");
+    const shapMetaChart = document.getElementById("shap-meta-chart");
+    const shapFeaturesBody = document.querySelector("#shap-features-table tbody");
+
+    const HAS_SHAP = Boolean(
+      SHAP_DATA && SHAP_DATA.available && SHAP_DATA.by_key
+        && Object.keys(SHAP_DATA.by_key).length
+    );
+
+    const SHAP_MODEL_FALLBACK_LABELS = {
+      random_forest: "Random Forest",
+      transformer_lf: "Transformer",
+    };
+
+    function shapKey(dataset, model) {
+      return `${dataset}|||${model}`;
+    }
+
+    function hasShapFor(dataset, model) {
+      if (!HAS_SHAP || !dataset || !model) return false;
+      return Boolean((SHAP_DATA.by_key || {})[shapKey(dataset, model)]);
+    }
+
+    function shapAvailableModelLabels() {
+      const labels = new Map();
+      for (const entry of Object.values(SHAP_DATA.by_key || {})) {
+        const key = entry.model || "";
+        const label = entry.model_label || SHAP_MODEL_FALLBACK_LABELS[key] || key;
+        if (label) labels.set(key, label);
+      }
+      const preferred = ["random_forest", "transformer_lf"];
+      const ordered = [];
+      for (const key of preferred) {
+        if (labels.has(key)) ordered.push(labels.get(key));
+        labels.delete(key);
+      }
+      ordered.push(...Array.from(labels.values()).sort((a, b) => a.localeCompare(b)));
+      return ordered;
+    }
+
+    function formatShapModelList(labels) {
+      if (!labels.length) return "Random Forest and Transformer (when computed)";
+      if (labels.length === 1) return labels[0];
+      if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+      return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+    }
+
+    function shapUnavailableMessage(model) {
+      const available = formatShapModelList(shapAvailableModelLabels());
+      const modelLabel = model
+        ? (SHAP_MODEL_FALLBACK_LABELS[model] || model)
+        : null;
+      if (!HAS_SHAP) {
+        return `SHAP is not available for this country yet. It is currently computed for ${available}.`;
+      }
+      const modelBit = modelLabel ? ` for ${modelLabel}` : "";
+      return `SHAP is not available${modelBit}. It is currently available for ${available}.`;
+    }
+
+    function updateShapButtonState() {
+      if (!shapPanelBtn) return;
+      const enabled = selectedCell
+        ? hasShapFor(selectedCell.dataset, selectedCell.model)
+        : false;
+      shapPanelBtn.disabled = !enabled;
+      shapPanelBtn.classList.toggle("is-disabled", !enabled);
+      shapPanelBtn.textContent = enabled ? "SHAP" : "SHAP (n/a)";
+      shapPanelBtn.title = enabled
+        ? "Feature importance (SHAP)"
+        : shapUnavailableMessage(selectedCell ? selectedCell.model : null);
+      if (!enabled && activePanel === "shap") {
+        activePanel = "maps";
+        panelButtons.forEach(b => {
+          b.classList.toggle("active", b.dataset.panel === "maps");
+        });
+      }
+    }
+    const MAP_YEAR_MEAN = "__mean__";
+    let mapYearKeys = [MAP_YEAR_MEAN];
+    let mapYearSelection = MAP_YEAR_MEAN;
+    let mapFeaturesCache = null;
+    let mapFeaturesCacheCountry = null;
+
+    const HAS_DYNAMIC_MAPS = Boolean(
+      MAP_DATA && MAP_DATA.datasets && Object.keys(MAP_DATA.datasets).length
+        && MAP_DATA.geojson_by_country && Object.keys(MAP_DATA.geojson_by_country).length
+    );
+    const geoCache = new Map();
+    const REGION_MAP_WIDTH = 520;
+    const REGION_MAP_HEIGHT = 420;
+    const REGION_MAP_MARGIN = 10;
+    const REGION_FILL_MISSING = "#d3d3d3";
+
+    function fmtMap(v, digits = 2) {
+      if (v === null || v === undefined || Number.isNaN(v)) return "—";
+      return Number(v).toFixed(digits);
+    }
+
+    async function loadCountryGeojson(country) {
+      if (geoCache.has(country)) return geoCache.get(country);
+      const href = (MAP_DATA.geojson_by_country || {})[country];
+      if (!href) return null;
+      try {
+        const geo = await d3.json(href);
+        if (!geo || !geo.features) return null;
+        const features = geo.features.map(f => rewindFeatureForSvg({
+          ...f,
+          properties: { ...f.properties, loc: String(f.properties.loc ?? "") },
+        }));
+        geoCache.set(country, features);
+        return features;
+      } catch (err) {
+        console.warn("GeoJSON load failed:", href, err);
+        return null;
+      }
+    }
+
+    // Mapbox geojson-rewind (RFC 7946): outer rings CCW for D3/SVG fills.
+    function rewindRing(ring, clockwise) {
+      let area = 0;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const p0 = ring[i];
+        const p1 = ring[j];
+        area += (p1[0] - p0[0]) * (p1[1] + p0[1]);
+      }
+      if ((area < 0) === clockwise) ring.reverse();
+      return ring;
+    }
+
+    function rewindGeometry(geometry, outerClockwise) {
+      if (!geometry) return geometry;
+      if (geometry.type === "Polygon") {
+        return {
+          ...geometry,
+          coordinates: geometry.coordinates.map((ring, i) =>
+            rewindRing(ring.slice(), i === 0 ? outerClockwise : !outerClockwise),
+          ),
+        };
+      }
+      if (geometry.type === "MultiPolygon") {
+        return {
+          ...geometry,
+          coordinates: geometry.coordinates.map(poly =>
+            poly.map((ring, i) =>
+              rewindRing(ring.slice(), i === 0 ? outerClockwise : !outerClockwise),
+            ),
+          ),
+        };
+      }
+      return geometry;
+    }
+
+    function rewindFeatureForSvg(feature) {
+      return {
+        ...feature,
+        geometry: rewindGeometry(feature.geometry, false),
+      };
+    }
+
+    function regionsWithData(features, valueByLoc) {
+      if (!features || !valueByLoc) return [];
+      return features.filter(f => valueByLoc[f.properties.loc] != null);
+    }
+
+    function yieldColor(value, extent) {
+      if (value == null || !extent) return REGION_FILL_MISSING;
+      const [lo, hi] = extent;
+      if (hi <= lo) return d3.interpolateViridis(0.5);
+      const t = Math.max(0, Math.min(1, (value - lo) / (hi - lo)));
+      return d3.interpolateViridis(t);
+    }
+
+    function sharedYieldExtent(actualMap, predMap) {
+      const vals = [
+        ...Object.values(actualMap || {}),
+        ...Object.values(predMap || {}),
+      ].filter(v => v != null && !Number.isNaN(v));
+      if (!vals.length) return null;
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      const pad = (hi - lo) * 0.05 || 0.5;
+      return [lo - pad, hi + pad];
+    }
+
+    function featuresForProjectionFit(features) {
+      if (!features || !features.length) return [];
+      return features.filter(f => {
+        const b = d3.geoBounds(f);
+        const lonSpan = b[1][0] - b[0][0];
+        const latSpan = b[1][1] - b[0][1];
+        return lonSpan <= 50 && latSpan <= 35;
+      });
+    }
+
+    function renderRegionChoropleth(
+      container,
+      regionFeatures,
+      valueByLoc,
+      extent,
+      title,
+    ) {
+      container.innerHTML = "";
+      if (!regionFeatures || !regionFeatures.length) {
+        container.innerHTML = `<p class="muted">${title}: no map geometry.</p>`;
+        return;
+      }
+      const dataFeatures = regionsWithData(regionFeatures, valueByLoc);
+      let fitFeatures = featuresForProjectionFit(
+        dataFeatures.length ? dataFeatures : regionFeatures,
+      );
+      if (!fitFeatures.length) fitFeatures = regionFeatures;
+      const svg = d3.select(container).append("svg")
+        .attr("viewBox", `0 0 ${REGION_MAP_WIDTH} ${REGION_MAP_HEIGHT}`)
+        .attr("role", "img")
+        .attr("aria-label", title);
+      const projection = d3.geoMercator().fitExtent(
+        [[REGION_MAP_MARGIN, REGION_MAP_MARGIN],
+         [REGION_MAP_WIDTH - REGION_MAP_MARGIN, REGION_MAP_HEIGHT - REGION_MAP_MARGIN]],
+        { type: "FeatureCollection", features: fitFeatures },
+      );
+      const path = d3.geoPath(projection);
+      svg.append("rect")
+        .attr("x", 0)
+        .attr("y", 0)
+        .attr("width", REGION_MAP_WIDTH)
+        .attr("height", REGION_MAP_HEIGHT)
+        .attr("fill", "#f8f9fa");
+      svg.selectAll("path.region")
+        .data(regionFeatures)
+        .join("path")
+        .attr("class", "region")
+        .attr("d", path)
+        .attr("fill", d => {
+          const loc = d.properties.loc;
+          const v = valueByLoc ? valueByLoc[loc] : null;
+          return yieldColor(v, extent);
+        })
+        .selectAll("title")
+        .data(d => [d])
+        .join("title")
+        .text(d => {
+          const loc = d.properties.loc;
+          const v = valueByLoc ? valueByLoc[loc] : null;
+          return v == null
+            ? `${loc}: outside benchmark`
+            : `${loc}: ${fmtMap(v)}`;
+        });
+    }
+
+    function mapYearLabelText(yearKey) {
+      return yearKey === MAP_YEAR_MEAN ? "Mean (all years)" : String(yearKey);
+    }
+
+    function yearsForModel(slice, model) {
+      const predByYear = ((slice.models_by_year || {})[model]) || {};
+      const actualByYear = slice.actual_by_year || {};
+      const predYears = Object.keys(predByYear);
+      // Only years with both ground truth and model preds (avoids empty maps
+      // when naive baselines use a shifted year window, e.g. AU wheat 2019 vs 2024).
+      const both = predYears.length
+        ? predYears.filter((y) => Object.keys(actualByYear[y] || {}).length > 0)
+        : Object.keys(actualByYear);
+      if (both.length) return both.sort();
+      if (predYears.length) return predYears.sort();
+      // Fallback when only pooled means exist (no per-year preds).
+      return Array.isArray(slice.years) ? slice.years.map(String) : [];
+    }
+
+    function setupMapYearSlider(slice, model) {
+      const years = yearsForModel(slice, model);
+      mapYearKeys = years.length > 1 ? [MAP_YEAR_MEAN, ...years] : years;
+      mapYearSelection = mapYearKeys[0] || MAP_YEAR_MEAN;
+
+      if (mapYearKeys.length <= 1) {
+        mapYearControls.style.display = "none";
+        return;
+      }
+
+      mapYearControls.style.display = "";
+      mapYearSlider.min = "0";
+      mapYearSlider.max = String(mapYearKeys.length - 1);
+      mapYearSlider.step = "1";
+      mapYearSlider.value = "0";
+      mapYearLabel.textContent = mapYearLabelText(mapYearSelection);
+    }
+
+    function mapValuesForSelection(slice, model, yearKey) {
+      if (yearKey === MAP_YEAR_MEAN) {
+        return {
+          actual: slice.actual || {},
+          pred: (slice.models || {})[model] || {},
+        };
+      }
+      return {
+        actual: (slice.actual_by_year || {})[yearKey] || {},
+        pred: ((slice.models_by_year || {})[model] || {})[yearKey] || {},
+      };
+    }
+
+    function pooledMapExtent(slice, model) {
+      const vals = [];
+      const pushMap = (m) => {
+        Object.values(m || {}).forEach(v => {
+          if (v != null && !Number.isNaN(v)) vals.push(v);
+        });
+      };
+      pushMap(slice.actual);
+      pushMap((slice.models || {})[model]);
+      Object.values(slice.actual_by_year || {}).forEach(pushMap);
+      Object.values((slice.models_by_year || {})[model] || {}).forEach(pushMap);
+      if (!vals.length) return null;
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      const pad = (hi - lo) * 0.05 || 0.5;
+      return [lo - pad, hi + pad];
+    }
+
+    function renderDynamicMapLayers(dataset, model, yearKey) {
+      const slice = (MAP_DATA.datasets || {})[dataset];
+      if (!slice || !mapFeaturesCache) return false;
+      const { actual, pred } = mapValuesForSelection(slice, model, yearKey);
+      if (!regionsWithData(mapFeaturesCache, actual).length
+          && !regionsWithData(mapFeaturesCache, pred).length) {
+        return false;
+      }
+      const extent = pooledMapExtent(slice, model);
+      const yearSuffix = yearKey === MAP_YEAR_MEAN ? "mean yield" : yearKey;
+      if (mapCaptionLeftDyn) {
+        mapCaptionLeftDyn.textContent = `Ground truth (${yearSuffix})`;
+      }
+      if (mapCaptionRightDyn) {
+        mapCaptionRightDyn.textContent = `Model prediction (${model}, ${yearSuffix})`;
+      }
+      renderRegionChoropleth(
+        regionMapActual,
+        mapFeaturesCache,
+        actual,
+        extent,
+        `Ground truth (${yearSuffix})`,
+      );
+      renderRegionChoropleth(
+        regionMapPred,
+        mapFeaturesCache,
+        pred,
+        extent,
+        `Model prediction (${model}, ${yearSuffix})`,
+      );
+      if (extent) {
+        const label = `${fmtMap(extent[0])} → ${fmtMap(extent[1])}`;
+        regionMapLegendActual.textContent = label;
+        regionMapLegendPred.textContent = label;
+      }
+      return true;
+    }
+
+    async function renderDynamicMaps(dataset, model) {
+      const slice = (MAP_DATA.datasets || {})[dataset];
+      if (!slice) return false;
+      const country = slice.country;
+      setupMapYearSlider(slice, model);
+      if (mapFeaturesCacheCountry !== country) {
+        mapFeaturesCache = await loadCountryGeojson(country);
+        mapFeaturesCacheCountry = country;
+      }
+      if (!mapFeaturesCache) return false;
+      return renderDynamicMapLayers(dataset, model, mapYearSelection);
+    }
+
+    mapYearSlider.addEventListener("input", () => {
+      if (!selectedCell || activePanel !== "maps") return;
+      const idx = Number(mapYearSlider.value);
+      mapYearSelection = mapYearKeys[idx] || MAP_YEAR_MEAN;
+      mapYearLabel.textContent = mapYearLabelText(mapYearSelection);
+      renderDynamicMapLayers(selectedCell.dataset, selectedCell.model, mapYearSelection);
+    });
+
+    function showMapMode(useDynamic) {
+      mapGridDynamic.style.display = useDynamic ? "" : "none";
+      imgGrid.style.display = useDynamic ? "none" : "";
+      mapYearControls.style.display = useDynamic && mapYearKeys.length > 1 ? "" : "none";
+    }
+
+    function showShapMode(show) {
+      shapPanel.style.display = show ? "" : "none";
+      imgGrid.style.display = show ? "none" : "";
+      mapGridDynamic.style.display = "none";
+      mapYearControls.style.display = "none";
+    }
+
+    function renderShapPanel(dataset, model) {
+      const key = shapKey(dataset, model);
+      const entry = (SHAP_DATA.by_key || {})[key];
+      shapMetaChart.innerHTML = "";
+      shapFeaturesBody.innerHTML = "";
+      if (!entry) {
+        shapCaption.textContent = shapUnavailableMessage(model);
+        return;
+      }
+      shapCaption.textContent =
+        `${entry.model_label || entry.model} · ${entry.explainer} · `
+        + `${entry.n_origins} walk-forward origin(s) · meta-group shares (median % of |SHAP|)`;
+
+      const groups = (entry.meta_groups || []).slice(0, 12);
+      if (groups.length) {
+        const width = Math.min(720, shapPanel.clientWidth || 720);
+        const height = Math.max(180, groups.length * 28 + 24);
+        const margin = { top: 8, right: 48, bottom: 8, left: 120 };
+        const svg = d3.select(shapMetaChart)
+          .append("svg")
+          .attr("width", width)
+          .attr("height", height);
+        const x = d3.scaleLinear()
+          .domain([0, d3.max(groups, d => d.share_pct) || 1])
+          .range([0, width - margin.left - margin.right]);
+        const y = d3.scaleBand()
+          .domain(groups.map(d => d.name))
+          .range([0, height - margin.top - margin.bottom])
+          .padding(0.18);
+        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+        g.selectAll("rect")
+          .data(groups)
+          .join("rect")
+          .attr("x", 0)
+          .attr("y", d => y(d.name))
+          .attr("width", d => x(d.share_pct))
+          .attr("height", y.bandwidth())
+          .attr("fill", "#0969da")
+          .attr("rx", 3);
+        g.selectAll(".bar-label")
+          .data(groups)
+          .join("text")
+          .attr("class", "bar-label")
+          .attr("x", -8)
+          .attr("y", d => y(d.name) + y.bandwidth() / 2)
+          .attr("dy", "0.35em")
+          .attr("text-anchor", "end")
+          .text(d => d.name);
+        g.selectAll(".bar-value")
+          .data(groups)
+          .join("text")
+          .attr("class", "bar-value")
+          .attr("x", d => x(d.share_pct) + 6)
+          .attr("y", d => y(d.name) + y.bandwidth() / 2)
+          .attr("dy", "0.35em")
+          .text(d => `${d.share_pct.toFixed(1)}%`);
+      }
+
+      const features = entry.top_features || [];
+      for (const feat of features) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td class="num">${feat.rank}</td>`
+          + `<td>${feat.name}</td>`
+          + `<td class="num">${Number(feat.mean_abs_shap).toFixed(4)}</td>`;
+        shapFeaturesBody.appendChild(tr);
+      }
+    }
+
+    const METRIC_COLUMNS = [
+      { key: "region_year_r2", label: "R²", group: "Region-Year", higherBetter: true, title: "R² on all region-year rows (absolute prediction quality)" },
+      { key: "region_year_nrmse", label: "NRMSE", group: "Region-Year", higherBetter: false, title: "Normalized RMSE on absolute yields" },
+      {
+        key: "spatial_r",
+        label: "r<br><span class=\"metric-sub\">r/year</span>",
+        group: "Spatial",
+        higherBetter: true,
+        title: "Slice by year; Pearson r across regions each year; median across years (years with ≥3 regions)",
+      },
+      {
+        key: "spatial_r_agg",
+        label: "r<br><span class=\"metric-sub\">agg</span>",
+        group: "Spatial",
+        higherBetter: true,
+        title: "Mean yield across years per region; one Pearson r across regions",
+      },
+      {
+        key: "temporal_r",
+        label: "r<br><span class=\"metric-sub\">med/reg</span>",
+        group: "Temporal",
+        higherBetter: true,
+        title: "Slice by region; Pearson r across years per region; median across regions (regions with ≥3 years)",
+      },
+      {
+        key: "temporal_r_agg",
+        label: "r<br><span class=\"metric-sub\">agg</span>",
+        group: "Temporal",
+        higherBetter: true,
+        title: "Mean yield across regions each year; one Pearson r across years",
+      },
+      {
+        key: "anomaly_r",
+        label: "r<br><span class=\"metric-sub\">anom/reg</span>",
+        group: "Anomaly",
+        higherBetter: true,
+        title: "Per region: Pearson r on location-demeaned yields; median across regions",
+      },
+      {
+        key: "anomaly_r_pooled",
+        label: "r<br><span class=\"metric-sub\">pooled</span>",
+        group: "Anomaly",
+        higherBetter: true,
+        title: "Pooled Pearson r on all location-de-meaned yields",
+      },
+    ];
+
+    const R_FIXED = { min: -1, max: 1, higherBetter: true };
+
+    // Absolute color scales — comparable across rows and dashboards.
+    const FIXED_SCALES = {
+      region_year_r2: { min: 0, max: 1, higherBetter: true },
+      region_year_nrmse: { min: 0, max: 0.5, higherBetter: false },
+      spatial_r: R_FIXED,
+      spatial_r_agg: R_FIXED,
+      temporal_r: R_FIXED,
+      temporal_r_agg: R_FIXED,
+      anomaly_r: R_FIXED,
+      anomaly_r_pooled: R_FIXED,
+    };
+
+    let selectedCell = null;
+    let activePanel = "maps";
+    let allRows = [];
+    let sortKey = "region_year_nrmse";
+    let sortDir = "asc";
+    let colorMode = "fixed";
+    let deepLink = readDeepLink();
+
+    function readDeepLink() {
+      const params = new URLSearchParams(window.location.search);
+      const model = (params.get("model") || "").trim();
+      if (!model) return null;
+      return {
+        model,
+        dataset: (params.get("dataset") || "").trim(),
+        panel: (params.get("panel") || "").trim(),
+      };
+    }
+
+    function rowMatchesDeepLink(row) {
+      if (!deepLink?.model) return false;
+      if (row.model.toLowerCase() !== deepLink.model.toLowerCase()) return false;
+      if (deepLink.dataset && row.dataset.toLowerCase() !== deepLink.dataset.toLowerCase()) {
+        return false;
+      }
+      return true;
+    }
+
+    function applyDeepLinkToFilters() {
+      if (!deepLink?.model) return null;
+      const match = allRows.find(rowMatchesDeepLink);
+      if (!match) return null;
+      modelFilter.value = match.model;
+      if (deepLink.dataset) datasetFilter.value = match.dataset;
+      if (["maps", "scatter", "temporal"].includes(deepLink.panel)) {
+        activePanel = deepLink.panel;
+        panelButtons.forEach(b => {
+          b.classList.toggle("active", b.dataset.panel === activePanel);
+        });
+      }
+      return match;
+    }
+
+    function parseDataset(dataset) {
+      const idx = dataset.lastIndexOf("_");
+      if (idx <= 0) return { crop: dataset, country: "" };
+      return { crop: dataset.slice(0, idx), country: dataset.slice(idx + 1) };
+    }
+
+    function formatValue(v) {
+      return (v === null || v === undefined || Number.isNaN(v)) ? "-" : v.toFixed(3);
+    }
+
+    function metricStd(row, key) {
+      const v = row.metrics[`${key}_std`];
+      return (v === null || v === undefined || Number.isNaN(v)) ? null : v;
+    }
+
+    function formatMetricCell(row, key) {
+      const v = metricValue(row, key);
+      if (v === null) return "-";
+      const std = metricStd(row, key);
+      if (std === null) return formatValue(v);
+      return `${formatValue(v)}<span class="metric-std">±${formatValue(std)}</span>`;
+    }
+
+    function metricValue(row, key) {
+      const v = row.metrics[key];
+      return (v === null || v === undefined || Number.isNaN(v)) ? null : v;
+    }
+
+    function compareRows(a, b) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      const getSortVal = (row) => {
+        if (sortKey === "dataset") return row.dataset;
+        if (sortKey === "model") return row.model;
+        if (sortKey === "n_regions") return row.n_regions;
+        if (sortKey === "n_years") return row.n_years;
+        if (sortKey === "n_samples") return row.n_samples;
+        return metricValue(row, sortKey);
+      };
+      const av = getSortVal(a);
+      const bv = getSortVal(b);
+      const aMissing = av === null || av === undefined || av === "";
+      const bMissing = bv === null || bv === undefined || bv === "";
+      if (aMissing && bMissing) return a.model.localeCompare(b.model);
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      if (typeof av === "string") return dir * av.localeCompare(bv);
+      return dir * (av - bv);
+    }
+
+    function heatColor(value, min, max, higherBetter) {
+      if (value === null || min === null || max === null || min === max) return null;
+      const t = higherBetter
+        ? (value - min) / (max - min)
+        : (max - value) / (max - min);
+      const clamped = Math.max(0, Math.min(1, t));
+      const hue = Math.round(clamped * 120);
+      const alpha = 0.12 + clamped * 0.28;
+      return `hsla(${hue}, 55%, 42%, ${alpha.toFixed(2)})`;
+    }
+
+    function columnStats(rows, key) {
+      const vals = rows.map(r => metricValue(r, key)).filter(v => v !== null);
+      if (!vals.length) return { min: null, max: null };
+      return { min: Math.min(...vals), max: Math.max(...vals) };
+    }
+
+    function scaleForColumn(key, rows) {
+      if (colorMode === "fixed" && FIXED_SCALES[key]) {
+        return FIXED_SCALES[key];
+      }
+      const col = METRIC_COLUMNS.find(c => c.key === key);
+      const stats = columnStats(rows, key);
+      return {
+        min: stats.min,
+        max: stats.max,
+        higherBetter: col ? col.higherBetter : true,
+      };
+    }
+
+    function buildRows() {
+      const grouped = new Map();
+      for (const rec of DATA) {
+        const key = `${rec.dataset}|||${rec.model}`;
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            dataset: rec.dataset,
+            model: rec.model,
+            n_regions: rec.n_regions,
+            n_years: rec.n_years,
+            n_samples: rec.n_samples,
+            images: rec.images || {},
+            metrics: {},
+          });
+        }
+        const metricKey = `${rec.view}_${rec.metric}`;
+        grouped.get(key).metrics[metricKey] = rec.value;
+        if (rec.value_std !== null && rec.value_std !== undefined && !Number.isNaN(rec.value_std)) {
+          grouped.get(key).metrics[`${metricKey}_std`] = rec.value_std;
+        }
+      }
+      allRows = Array.from(grouped.values());
+    }
+
+    function filteredRows() {
+      const ds = datasetFilter.value;
+      const modelQ = modelFilter.value.trim().toLowerCase();
+      let rows = allRows.filter(r => {
+        if (ds && r.dataset !== ds) return false;
+        if (modelQ && !r.model.toLowerCase().includes(modelQ)) return false;
+        return true;
+      });
+      rows.sort((a, b) => {
+        if (groupDatasets.checked && sortKey !== "dataset") {
+          const byDs = a.dataset.localeCompare(b.dataset);
+          if (byDs !== 0) return byDs;
+        }
+        return compareRows(a, b);
+      });
+      return rows;
+    }
+
+    function renderDatasetCell(row, showLabel) {
+      if (!showLabel) return `<td class="dataset-cell continued">.</td>`;
+      const parts = parseDataset(row.dataset);
+      const country = parts.country
+        ? `<span class="badge country">${parts.country}</span>`
+        : "";
+      return `<td class="dataset-cell"><span class="dataset-parts"><span class="badge">${parts.crop}</span>${country}</span></td>`;
+    }
+
+    function renderHeatmap({ preserveSelection = false } = {}) {
+      const prev = preserveSelection && selectedCell
+        ? `${selectedCell.dataset}|||${selectedCell.model}`
+        : null;
+
+      const datasets = Array.from(new Set(allRows.map(r => r.dataset))).sort();
+      const models = Array.from(new Set(allRows.map(r => r.model))).sort();
+      const priorDataset = datasetFilter.value;
+      const priorModel = modelFilter.value;
+
+      datasetFilter.innerHTML = `<option value="">All datasets</option>` +
+        datasets.map(d => `<option value="${d}">${d}</option>`).join("");
+
+      let deepTarget = null;
+      if (!preserveSelection && deepLink?.model) {
+        deepTarget = applyDeepLinkToFilters();
+      } else {
+        if (priorDataset && datasets.includes(priorDataset)) {
+          datasetFilter.value = priorDataset;
+        }
+        modelFilter.value = priorModel;
+      }
+
+      const rows = filteredRows();
+
+      coverageInfo.textContent =
+        `Showing ${rows.length} of ${allRows.length} rows (datasets=${datasets.length}, models=${models.length})`;
+
+      const stats = {};
+      for (const col of METRIC_COLUMNS) {
+        stats[col.key] = scaleForColumn(col.key, rows);
+      }
+
+      const sortMark = (key) => sortKey === key
+        ? `<span class="sort-mark">${sortDir === "asc" ? "▲" : "▼"}</span>`
+        : `<span class="sort-mark"></span>`;
+
+      let html = `
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2" class="sortable" data-sort="dataset">Dataset ${sortMark("dataset")}</th>
+      <th rowspan="2" class="sortable" data-sort="model">Model ${sortMark("model")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_regions">Regions ${sortMark("n_regions")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_years">Years ${sortMark("n_years")}</th>
+      <th rowspan="2" class="sortable" data-sort="n_samples">Samples ${sortMark("n_samples")}</th>
+      <th colspan="2" class="group-head">Region-Year</th>
+      <th colspan="2" class="group-head" title="Spatial pattern recovery">Spatial</th>
+      <th colspan="2" class="group-head" title="Temporal dynamics recovery">Temporal</th>
+      <th colspan="2" class="group-head">Anomaly</th>
+    </tr>
+    <tr>`;
+      for (const col of METRIC_COLUMNS) {
+        const tip = col.title ? ` title="${col.title}"` : "";
+        html += `<th class="sortable" data-sort="${col.key}"${tip}>${col.label} ${sortMark(col.key)}</th>`;
+      }
+      html += `</tr></thead><tbody>`;
+
+      let prevDataset = null;
+      rows.forEach((row, idx) => {
+        const groupClass = idx % 2 === 0 ? "group-a" : "group-b";
+        const showDataset = !groupDatasets.checked || row.dataset !== prevDataset || datasetFilter.value;
+        prevDataset = row.dataset;
+        const payload = encodeURIComponent(JSON.stringify(row));
+        html += `<tr class="metric-row ${groupClass}" data-row="${payload}">`;
+        html += renderDatasetCell(row, showDataset);
+        html += `<td>${row.model}</td><td>${row.n_regions ?? "—"}</td><td>${row.n_years ?? "—"}</td><td>${row.n_samples ?? "—"}</td>`;
+        for (const col of METRIC_COLUMNS) {
+          const v = metricValue(row, col.key);
+          const scale = stats[col.key];
+          const bg = heatColor(v, scale.min, scale.max, scale.higherBetter);
+          const style = bg ? ` style="background-color:${bg}"` : "";
+          const cls = v === null ? "metric-cell missing" : "metric-cell";
+          html += `<td class="${cls}"${style}>${formatMetricCell(row, col.key)}</td>`;
+        }
+        html += `</tr>`;
+      });
+      html += "</tbody></table>";
+      heatmapWrap.innerHTML = html;
+
+      const metricRows = Array.from(heatmapWrap.querySelectorAll("tr.metric-row"));
+      metricRows.forEach(tr => {
+        tr.addEventListener("click", () => {
+          metricRows.forEach(r => r.classList.remove("selected"));
+          tr.classList.add("selected");
+          selectedCell = JSON.parse(decodeURIComponent(tr.dataset.row));
+          refreshDrill();
+        });
+      });
+
+      heatmapWrap.querySelectorAll("th.sortable").forEach(th => {
+        th.addEventListener("click", () => {
+          const key = th.dataset.sort;
+          if (sortKey === key) {
+            sortDir = sortDir === "asc" ? "desc" : "asc";
+          } else {
+            sortKey = key;
+            const col = METRIC_COLUMNS.find(c => c.key === key);
+            if (col) {
+              sortDir = col.higherBetter ? "desc" : "asc";
+            } else if (key === "dataset" || key === "model") {
+              sortDir = "asc";
+            } else {
+              sortDir = "desc";
+            }
+          }
+          renderHeatmap({ preserveSelection: true });
+        });
+      });
+
+      if (prev) {
+        const target = metricRows.find(r => {
+          const rec = JSON.parse(decodeURIComponent(r.dataset.row));
+          return `${rec.dataset}|||${rec.model}` === prev;
+        });
+        if (target) {
+          target.click();
+          return;
+        }
+      }
+
+      if (deepTarget) {
+        const want = `${deepTarget.dataset}|||${deepTarget.model}`;
+        const target = metricRows.find(r => {
+          const rec = JSON.parse(decodeURIComponent(r.dataset.row));
+          return `${rec.dataset}|||${rec.model}` === want;
+        });
+        if (target) {
+          deepLink = null;
+          target.click();
+          document.getElementById("drill-down")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+      }
+
+      if (metricRows.length > 0) {
+        if (!deepLink) metricRows[0].click();
+      } else {
+        selectedCell = null;
+        drillImageA.removeAttribute("src");
+        drillImageB.removeAttribute("src");
+        missingNote.textContent = "No rows match the current filters.";
+        selectionLabel.textContent = "No selection.";
+        updateShapButtonState();
+      }
+    }
+
+    function refreshDrill() {
+      updateShapButtonState();
+      if (!selectedCell) return;
+      const parts = parseDataset(selectedCell.dataset);
+      const label = parts.country
+        ? `${parts.crop} (${parts.country}) · ${selectedCell.model}`
+        : `${selectedCell.dataset} · ${selectedCell.model}`;
+      selectionLabel.textContent = label;
+      const images = selectedCell.images || {};
+      missingNote.textContent = "";
+
+      if (activePanel === "maps") {
+        showShapMode(false);
+        if (!HAS_DYNAMIC_MAPS || !(MAP_DATA.datasets || {})[selectedCell.dataset]) {
+          showMapMode(false);
+          missingNote.textContent =
+            "No dynamic map data for this dataset. Re-run collect with preds and polygons.";
+          return;
+        }
+        showMapMode(true);
+        renderDynamicMaps(selectedCell.dataset, selectedCell.model).then(ok => {
+          if (!ok) {
+            showMapMode(false);
+            const href = ((MAP_DATA.geojson_by_country || {})[
+              (MAP_DATA.datasets[selectedCell.dataset] || {}).country
+            ]) || "assets/regions_*.geojson";
+            missingNote.textContent =
+              `Could not load map geometry (${href} missing or failed). `
+              + "Re-run collect + publish so regions_*.geojson is bundled in assets/.";
+          }
+        }).catch(err => {
+          showMapMode(false);
+          missingNote.textContent = `Map error: ${err}`;
+        });
+        return;
+      }
+
+      if (activePanel === "shap") {
+        showShapMode(true);
+        renderShapPanel(selectedCell.dataset, selectedCell.model);
+        return;
+      }
+
+      showShapMode(false);
+      showMapMode(false);
+      imgGrid.classList.remove("two");
+      drillColB.style.display = "none";
+      mapCaptionLeft.style.display = "none";
+      mapCaptionRight.style.display = "none";
+      drillImageB.removeAttribute("src");
+
+      const path = images[activePanel] || "";
+      if (!path) {
+        drillImageA.removeAttribute("src");
+        missingNote.textContent = `No image found for panel: ${activePanel}`;
+        return;
+      }
+      drillImageA.src = path;
+    }
+
+    datasetFilter.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    modelFilter.addEventListener("input", () => renderHeatmap({ preserveSelection: true }));
+    groupDatasets.addEventListener("change", () => renderHeatmap({ preserveSelection: true }));
+    colorModeSelect.addEventListener("change", () => {
+      colorMode = colorModeSelect.value;
+      renderHeatmap({ preserveSelection: true });
+    });
+
+    panelButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (btn.disabled || btn.classList.contains("is-disabled")) return;
+        panelButtons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activePanel = btn.dataset.panel;
+        refreshDrill();
+      });
+    });
+
+    drillImageA.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load image. Re-run collect with plot enabled to regenerate dashboard assets.";
+    });
+    drillImageB.addEventListener("error", () => {
+      missingNote.textContent =
+        "Could not load prediction map. Re-run collect with plot enabled.";
+    });
+
+    buildRows();
+    renderHeatmap();
+    updateShapButtonState();
+  </script>
